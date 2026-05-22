@@ -610,6 +610,65 @@
             steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
         };
 
+        // Local caching layer to reduce API requests
+        const PokeCache = {
+            prefix: 'pokeapi_cache_v2_',
+            get(url) {
+                try {
+                    const cached = sessionStorage.getItem(this.prefix + url);
+                    if (cached) {
+                        const { data } = JSON.parse(cached);
+                        return data;
+                    }
+                } catch (e) {
+                    console.warn('Cache read error', e);
+                }
+                return null;
+            },
+            set(url, data) {
+                try {
+                    const item = { data, cachedAt: Date.now() };
+                    sessionStorage.setItem(this.prefix + url, JSON.stringify(item));
+                } catch (e) {
+                    console.warn('Cache full or quota exceeded');
+                    this.clearOld();
+                }
+            },
+            clearOld() {
+                console.log("[CACHE] Clearing old cache data.")
+                const keys = Object.keys(sessionStorage).filter(k => k.startsWith(this.prefix));
+                // Remove half of oldest caches if quota hit
+                keys.sort((a, b) => {
+                    const ta = JSON.parse(sessionStorage.getItem(a)).cachedAt;
+                    const tb = JSON.parse(sessionStorage.getItem(b)).cachedAt;
+                    return ta - tb;
+                });
+                const toRemove = keys.slice(0, Math.ceil(keys.length / 2));
+                toRemove.forEach(k => sessionStorage.removeItem(k));
+            },
+            clear() {
+                console.log("[CACHE] Clearing all cache data.")
+                Object.keys(sessionStorage).filter(k => k.startsWith(this.prefix)).forEach(k => sessionStorage.removeItem(k));
+            }
+        };
+
+        // Cached fetch wrapper
+        async function cachedFetch(url) {
+            const cached = PokeCache.get(url);
+
+            if (cached) {
+                console.log("Successfully retrieved cached object for " + url);
+                return cached;
+            } else {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                PokeCache.set(url, data);
+                console.log("Found no cache for" + url + ". Sucessfully updated the cache data for it.");
+                return data;
+            }
+        }
+
         let allPokemonNames = [];
         let searchTimeout = null;
         let activeSuggestionIndex = -1;
@@ -665,15 +724,14 @@
         // Fetch all pokemon list for autocomplete
         async function loadPokemonList() {
             try {
-                const res = await fetch('https://pokeapi.co/api/v2/pokemon?limit=1025');
-                const data = await res.json();
+                const data = await cachedFetch('https://pokeapi.co/api/v2/pokemon?limit=1025');
                 allPokemonNames = data.results.map(p => ({ name: p.name, url: p.url }));
                 allPokemonNames.forEach(p => {
                     const idMatch = p.url.match(/\/(\d+)\//);
                     if (idMatch) p.id = parseInt(idMatch[1]);
                 });
             } catch (e) {
-                console.warn('Failed to load pokemon list for autocomplete');
+                console.warn('Failed to load pokemon list for autocomplete', e);
             }
         }
 
@@ -801,6 +859,38 @@
 
             } catch (err) {
                 if (err.message === 'pokemon_not_found' || err.message === 'evolution_chain_not_found') {
+                    showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
+                } else {
+                    showError('An error occurred. Please try again.');
+                }
+            } finally {
+                searchSpinner.classList.remove('active');
+            }
+        }
+
+        async function searchPokemon(name) {
+            const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+            if (!cleanName) return;
+
+            // Update input value if called directly via URL hash
+            if (searchInput.value !== cleanName) {
+                searchInput.value = cleanName;
+            }
+
+            suggestionsDiv.classList.remove('visible');
+            activeSuggestionIndex = -1;
+            errorMsg.classList.remove('visible');
+            resultsDiv.innerHTML = '';
+            searchSpinner.classList.add('active');
+
+            try {
+                const speciesData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon-species/${cleanName}`);
+                const pokemonData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon/${cleanName}`);
+                const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
+                renderResults(speciesData, pokemonData, evoChainData);
+
+            } catch (err) {
+                if (err.message.includes('404') || err.message.includes('400')) {
                     showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
                 } else {
                     showError('An error occurred. Please try again.');
