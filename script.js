@@ -391,36 +391,87 @@ function renderEvolutions(evoInfo) {
 
     evoInfo.evolvesTo.forEach((evoTarget, idx) => {
         const targetName = evoTarget.species_name;
-        const methodSummary = getMethodSummary(evoTarget.evolution_details);
-        const methodDetails = getMethodDetails(evoTarget.evolution_details);
+
+        // Group details into distinct method boxes
+        const methodGroups = groupEvolutionMethods(evoTarget.evolution_details);
+
+        // Render one spoiler box per distinct method
+        const spoilerBoxes = methodGroups.map((group, boxIdx) =>
+            renderMethodBox(group, boxIdx, idx)
+        ).join('');
+
         html += `
-                    <div class="evo-branch">
-                        <div class="evo-row">
-                            <div class="evo-card">
-                                <div class="evo-name-row" id="evoNameRow-${idx}">
-                                    <span class="evo-hidden-text" id="evoHiddenText-${idx}">Evolution Name</span>
-                                    <span style="display:none;" id="evoTargetSpan-${idx}">
-                                        <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
-                                    </span>
-                                    <button class="btn-reveal-evo" onclick="toggleEvoReveal(${idx}, '${targetName}')" id="evoToggleBtn-${idx}">
-                                        👁️
-                                    </button>
-                                </div>
-                                <div class="evo-method">
-                                    <span class="method-label">Method:</span> ${methodSummary}
-                                </div>
-                                <div class="spoiler-content" id="spoiler-${idx}">
-                                    ${methodDetails}
-                                </div>
-                                <button class="btn-reveal" onclick="toggleSpoiler(${idx})" id="triggerRevealBtn-${idx}">
-                                    🔍 Reveal Trigger Requirement
-                                </button>
-                            </div>
+            <div class="evo-branch">
+                <div class="evo-row">
+                    <div class="evo-card">
+                        <div class="evo-name-row" id="evoNameRow-${idx}">
+                            <span class="evo-hidden-text" id="evoHiddenText-${idx}">Evolution Name</span>
+                            <span style="display:none;" id="evoTargetSpan-${idx}">
+                                <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
+                            </span>
+                            <button class="btn-reveal-evo" onclick="toggleEvoReveal(${idx}, '${targetName}')" id="evoToggleBtn-${idx}">
+                                👁️
+                            </button>
+                        </div>
+                        <div class="spoiler-wrapper">
+                            ${spoilerBoxes}
                         </div>
                     </div>
-                `;
+                </div>
+            </div>
+        `;
     });
     return html;
+}
+
+// Group evolution details by unique method signature for multiple trigger boxes
+function groupEvolutionMethods(details) {
+    const groups = new Map();
+
+    details.forEach(d => {
+        // Create a unique key based on trigger + key distinguishing fields
+        const key = `${d.trigger}|${d.item || ''}|${d.location || ''}|${d.time_of_day || ''}|${d.min_level || ''}`;
+
+        if (!groups.has(key)) {
+            groups.set(key, {
+                trigger: d.trigger,
+                item: d.item,
+                location: d.location,
+                time_of_day: d.time_of_day,
+                min_level: d.min_level,
+                details: []
+            });
+        }
+        groups.get(key).details.push(d);
+    });
+
+    return Array.from(groups.values());
+}
+
+function renderMethodBox(methodGroup, boxIdx, parentIdx) {
+    const methodSummary = getMethodSummary([methodGroup]);
+    const methodDetails = getMethodDetails(methodGroup.details);
+    const spoilerId = `spoiler-${parentIdx}-${boxIdx}`;
+    const btnId = `triggerRevealBtn-${parentIdx}-${boxIdx}`;
+
+    return `
+        <div class="spoiler-box">
+            <span class="method-title">Method: ${methodSummary}</span>
+            <div class="spoiler-details" id="${spoilerId}">
+                ${methodDetails}
+            </div>
+            <button class="btn-reveal" onclick="toggleMethodSpoiler('${spoilerId}', '${btnId}')" id="${btnId}">
+                🔍 Reveal Trigger Requirement
+            </button>
+        </div>
+    `;
+}
+
+function toggleMethodSpoiler(spoilerId, btnId) {
+    const spoiler = document.getElementById(spoilerId);
+    const btn = document.getElementById(btnId);
+    spoiler.classList.toggle('visible');
+    btn.style.display = 'none';
 }
 
 function toggleEvoReveal(idx, targetName) {
@@ -445,11 +496,13 @@ function toggleEvoReveal(idx, targetName) {
 }
 
 function getMethodSummary(details) {
-    if (!details || details.length === 0) return 'Unknown method';
+    // Accept either a single detail object or an array
+    const detailArray = Array.isArray(details) ? details : [details];
+    if (!detailArray || detailArray.length === 0) return 'Unknown method';
 
     const parts = [];
-    details.forEach(d => {
-        if (d.trigger) {
+    detailArray.forEach(d => {
+        if (d?.trigger) {
             const trigger = d.trigger;
             switch (trigger) {
                 case 'level-up':
@@ -496,8 +549,7 @@ function getMethodSummary(details) {
             }
         }
     });
-
-    return parts.join(', ');
+    return [...new Set(parts)].join(', '); // Remove duplicates
 }
 
 function getMethodDetails(details) {
