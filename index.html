@@ -610,50 +610,65 @@
             steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
         };
 
-        // Local caching layer to reduce API requests
+        // Local caching layer to reduce API requests, optimized to store only necessary fields
         const PokeCache = {
             prefix: 'pokeapi_cache_v2_',
+            timeToStale: 24 * 60 * 60 * 1000, // 24 hours
             get(url) {
                 try {
-                    const cached = sessionStorage.getItem(this.prefix + url);
+                    const key = this.prefix + url;
+                    const cached = localStorage.getItem(key);
                     if (cached) {
-                        const { data } = JSON.parse(cached);
-                        return data;
+                        const { data, cachedAt } = JSON.parse(cached);
+                        if (Date.now() - cachedAt > this.timeToStale) {
+                            localStorage.removeItem(key);
+                            return null;
+                        } else {
+                            return data;
+                        }
                     }
                 } catch (e) {
-                    console.warn('Cache read error', e);
+                    console.warn('Cache read error', e); 
                 }
+
                 return null;
             },
             set(url, data) {
+                const item = { data, cachedAt: Date.now() };
+
                 try {
-                    const item = { data, cachedAt: Date.now() };
-                    sessionStorage.setItem(this.prefix + url, JSON.stringify(item));
+                    localStorage.setItem(this.prefix + url, JSON.stringify(item));
                 } catch (e) {
                     console.warn('Cache full or quota exceeded');
                     this.clearOld();
+                    try {
+                        localStorage.setItem(this.prefix + url, JSON.stringify(item));
+                    }
+                    catch (e2) {
+                        console.error('Cache still full after clearing');
+                    }
                 }
             },
             clearOld() {
                 console.log("[CACHE] Clearing old cache data.")
-                const keys = Object.keys(sessionStorage).filter(k => k.startsWith(this.prefix));
+                const keys = Object.keys(localStorage).filter(k => k.startsWith(this.prefix));
                 // Remove half of oldest caches if quota hit
                 keys.sort((a, b) => {
-                    const ta = JSON.parse(sessionStorage.getItem(a)).cachedAt;
-                    const tb = JSON.parse(sessionStorage.getItem(b)).cachedAt;
+                    const ta = JSON.parse(localStorage.getItem(a)).cachedAt;
+                    const tb = JSON.parse(localStorage.getItem(b)).cachedAt;
                     return ta - tb;
                 });
                 const toRemove = keys.slice(0, Math.ceil(keys.length / 2));
-                toRemove.forEach(k => sessionStorage.removeItem(k));
+                toRemove.forEach(k => localStorage.removeItem(k));
             },
             clear() {
                 console.log("[CACHE] Clearing all cache data.")
-                Object.keys(sessionStorage).filter(k => k.startsWith(this.prefix)).forEach(k => sessionStorage.removeItem(k));
+                Object.keys(localStorage).filter(k => k.startsWith(this.prefix)).forEach(k => localStorage.removeItem(k));
             }
         };
 
         // Cached fetch wrapper
-        async function cachedFetch(url) {
+        async function cachedFetch(url, stripFn) {
             const cached = PokeCache.get(url);
 
             if (cached) {
@@ -661,13 +676,63 @@
                 return cached;
             } else {
                 const res = await fetch(url);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                
                 const data = await res.json();
-                PokeCache.set(url, data);
+                const toCache = stripFn ? stripFn(data) : data;
+                PokeCache.set(url, toCache);
                 console.log("Found no cache for" + url + ". Sucessfully updated the cache data for it.");
-                return data;
+                return toCache;
             }
         }
+
+        // Strip functions to minimize localStorage footprint
+        const stripPokemonList = (data) => data.results.map(r => ({ name: r.name, url: r.url }));
+
+        const stripSpecies = (data) => ({ evolution_chain_url: data.evolution_chain.url });
+
+        const stripPokemon = (data) => ({
+            id: data.id,
+            name: data.name,
+            sprite: data.sprites.other['official-artwork']?.front_default || data.sprites.front_default,
+            types: data.types.map(t => t.type.name)
+        });
+
+        function stripEvolutionDetails(details) {
+            return details.map(d => ({
+                trigger: d.trigger?.name,
+                min_level: d.min_level,
+                item: d.item?.name,
+                known_move: d.known_move?.name,
+                known_move_type: d.known_move_type?.name,
+                trade_species: d.trade_species?.name,
+                min_happiness: d.min_happiness,
+                min_beauty: d.min_beauty,
+                min_affection: d.min_affection,
+                needs_overworld_rain: d.needs_overworld_rain,
+                time_of_day: d.time_of_day,
+                relative_physical_stats: d.relative_physical_stats,
+                party_type: d.party_type,
+                party_species: d.party_species?.name,
+                gender: d.gender,
+                location: d.location?.name,
+                held_item: d.held_item?.name,
+                turn_upside_down: d.turn_upside_down
+            }));
+        }
+
+        function stripChainNode(node) {
+            return {
+                species_name: node.species.name,
+                evolution_details: stripEvolutionDetails(node.evolution_details),
+                evolves_to: node.evolves_to.map(child => stripChainNode(child))
+            };
+        }
+
+        const stripEvolutionChain = (data) => stripChainNode(data.chain);
 
         let allPokemonNames = [];
         let searchTimeout = null;
@@ -724,11 +789,14 @@
         // Fetch all pokemon list for autocomplete
         async function loadPokemonList() {
             try {
-                const data = await cachedFetch('https://pokeapi.co/api/v2/pokemon?limit=1025');
-                allPokemonNames = data.results.map(p => ({ name: p.name, url: p.url }));
-                allPokemonNames.forEach(p => {
+                const data = await cachedFetch('https://pokeapi.co/api/v2/pokemon?limit=1025', stripPokemonList);
+                allPokemonNames = data.map(p => {
                     const idMatch = p.url.match(/\/(\d+)\//);
-                    if (idMatch) p.id = parseInt(idMatch[1]);
+                    return { 
+                        name: p.name,
+                        url: p.url,
+                        id: idMatch ? parseInt(idMatch[1]) : 0
+                    };
                 });
             } catch (e) {
                 console.warn('Failed to load pokemon list for autocomplete', e);
@@ -835,60 +903,11 @@
             errorMsg.classList.remove('visible');
             resultsDiv.innerHTML = '';
             searchSpinner.classList.add('active');
-
             try {
-                // Step 1: Get pokemon species
-                const speciesRes = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${cleanName}`);
-                if (!speciesRes.ok) throw new Error('pokemon_not_found');
-
-                const speciesData = await speciesRes.json();
-
-                // Step 2: Get pokemon data for sprite and types
-                const pokemonRes = await fetch(`https://pokeapi.co/api/v2/pokemon/${cleanName}`);
-                if (!pokemonRes.ok) throw new Error('pokemon_not_found');
-
-                const pokemonData = await pokemonRes.json();
-
-                // Step 3: Get evolution chain
-                const evoUrl = speciesData.evolution_chain.url;
-                const evoRes = await fetch(evoUrl);
-                if (!evoRes.ok) throw new Error('evolution_chain_not_found');
-                const evoChainData = await evoRes.json();
-
+                const speciesData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon-species/${cleanName}`, stripSpecies);
+                const pokemonData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon/${cleanName}`, stripPokemon);
+                const evoChainData = await cachedFetch(speciesData.evolution_chain_url, stripEvolutionChain);
                 renderResults(speciesData, pokemonData, evoChainData);
-
-            } catch (err) {
-                if (err.message === 'pokemon_not_found' || err.message === 'evolution_chain_not_found') {
-                    showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
-                } else {
-                    showError('An error occurred. Please try again.');
-                }
-            } finally {
-                searchSpinner.classList.remove('active');
-            }
-        }
-
-        async function searchPokemon(name) {
-            const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-            if (!cleanName) return;
-
-            // Update input value if called directly via URL hash
-            if (searchInput.value !== cleanName) {
-                searchInput.value = cleanName;
-            }
-
-            suggestionsDiv.classList.remove('visible');
-            activeSuggestionIndex = -1;
-            errorMsg.classList.remove('visible');
-            resultsDiv.innerHTML = '';
-            searchSpinner.classList.add('active');
-
-            try {
-                const speciesData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon-species/${cleanName}`);
-                const pokemonData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon/${cleanName}`);
-                const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
-                renderResults(speciesData, pokemonData, evoChainData);
-
             } catch (err) {
                 if (err.message.includes('404') || err.message.includes('400')) {
                     showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
@@ -908,13 +927,9 @@
         function renderResults(speciesData, pokemonData, evoChainData) {
             const pName = pokemonData.name;
             const pId = pokemonData.id;
-            const pSprite = pokemonData.sprites.other['official-artwork'].front_default
-                || pokemonData.sprites.front_default;
-            const pTypes = pokemonData.types.map(t => t.type.name);
-
-            // Build evolution path
-            const evoInfo = findEvolutionInChain(evoChainData.chain, pName);
-
+            const pSprite = pokemonData.sprite;
+            const pTypes = pokemonData.types;
+            const evoInfo = findEvolutionInChain(evoChainData, pName);
             let html = '';
 
             // Breadcrumb
@@ -957,8 +972,8 @@
 
         function findEvolutionInChain(chainNode, targetName) {
             function traverse(node, currentPath) {
-                currentPath = [...currentPath, { name: node.species.name }];
-                if (node.species.name === targetName) {
+                currentPath = [...currentPath, { name: node.species_name }];
+                if (node.species_name === targetName) {
                     return { path: currentPath, details: node.evolution_details, evolvesTo: node.evolves_to };
                 }
                 for (const child of node.evolves_to) {
@@ -1017,6 +1032,47 @@
             return html;
         }
 
+        function renderEvolutions(evoInfo) {
+            if (!evoInfo || evoInfo.evolvesTo.length === 0) {
+                return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
+            }
+
+            let html = '';
+
+            evoInfo.evolvesTo.forEach((evoTarget, idx) => {
+                const targetName = evoTarget.species_name;
+                const methodSummary = getMethodSummary(evoTarget.evolution_details);
+                const methodDetails = getMethodDetails(evoTarget.evolution_details);
+                html += `
+                    <div class="evo-branch">
+                        <div class="evo-row">
+                            <div class="evo-card">
+                                <div class="evo-name-row" id="evoNameRow-${idx}">
+                                    <span class="evo-hidden-text" id="evoHiddenText-${idx}">Evolution Name</span>
+                                    <span style="display:none;" id="evoTargetSpan-${idx}">
+                                        <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
+                                    </span>
+                                    <button class="btn-reveal-evo" onclick="toggleEvoReveal(${idx}, '${targetName}')" id="evoToggleBtn-${idx}">
+                                        👁️
+                                    </button>
+                                </div>
+                                <div class="evo-method">
+                                    <span class="method-label">Method:</span> ${methodSummary}
+                                </div>
+                                <div class="spoiler-content" id="spoiler-${idx}">
+                                    ${methodDetails}
+                                </div>
+                                <button class="btn-reveal" onclick="toggleSpoiler(${idx})" id="triggerRevealBtn-${idx}">
+                                    🔍 Reveal Trigger Requirement
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            return html;
+        }
+
         function toggleEvoReveal(idx, targetName) {
             const hiddenText = document.getElementById(`evoHiddenText-${idx}`);
             const targetSpan = document.getElementById(`evoTargetSpan-${idx}`);
@@ -1044,7 +1100,7 @@
             const parts = [];
             details.forEach(d => {
                 if (d.trigger) {
-                    const trigger = d.trigger.name;
+                    const trigger = d.trigger;
                     switch (trigger) {
                         case 'level-up':
                             parts.push('Level up');
@@ -1158,9 +1214,7 @@
                     lines.push('<strong>Turn 3DS upside down</strong>');
                 }
             });
-
-            if (lines.length === 0) return 'No additional details available.';
-            return lines.join('<br>');
+            return lines.length === 0 ? 'No additional details available.' : lines.join('<br>');
         }
 
         function toggleSpoiler(idx) {
