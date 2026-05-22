@@ -635,11 +635,8 @@
         // Routing Helper (Hash-based for static servers)
         function navigateTo(name) {
             const cleanName = name ? name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
-            if (cleanName) {
-                window.location.hash = cleanName;
-            } else {
-                window.location.hash = '';
-            }
+            
+            window.location.hash = cleanName;
         }
 
         // Handle Route Change
