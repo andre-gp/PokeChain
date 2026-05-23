@@ -357,7 +357,6 @@ function renderResults(speciesData, pokemonData, evoChainData) {
                     </div>
                     <div class="divider"></div>
                     <div class="evolution-section">
-                        <h3><span class="icon">🧬</span> Evolution Chain</h3>
                         ${renderEvolutions(evoInfo, pName)}
                     </div>
                 </div>
@@ -405,7 +404,7 @@ function renderEvolutions(evoInfo) {
                 <div class="evo-row">
                     <div class="evo-card">
                         <div class="evo-name-row" id="evoNameRow-${idx}">
-                            <span class="evo-hidden-text" id="evoHiddenText-${idx}">Evolution Name</span>
+                            <span class="evo-hidden-text" id="evoHiddenText-${idx}">Name</span>
                             <span style="display:none;" id="evoTargetSpan-${idx}">
                                 <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
                             </span>
@@ -419,6 +418,7 @@ function renderEvolutions(evoInfo) {
                     </div>
                 </div>
             </div>
+            ${idx < evoInfo.evolvesTo.length - 1 ? '<div class="evo-divider"></div>' : ''}
         `;
     });
     return html;
@@ -461,7 +461,7 @@ function renderMethodBox(methodGroup, boxIdx, parentIdx) {
                 ${methodDetails}
             </div>
             <button class="btn-reveal" onclick="toggleMethodSpoiler('${spoilerId}', '${btnId}')" id="${btnId}">
-                🔍 Reveal Trigger Requirement
+                Reveal
             </button>
         </div>
     `;

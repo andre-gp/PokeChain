@@ -373,6 +373,54 @@ header {
     flex-shrink: 0;
 }
 
+/* Separator between evolution branches */
+.evo-separator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 24px 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    position: relative;
+}
+
+    .evo-separator::before,
+    .evo-separator::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, var(--border-color) 20%, var(--border-color) 80%, transparent 100% );
+        max-width: 120px;
+    }
+
+    .evo-separator::before {
+        margin-right: 16px;
+        background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100% );
+    }
+
+    .evo-separator::after {
+        margin-left: 16px;
+        background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100% );
+    }
+
+.evo-separator-text {
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+/* Alternative: Simple elegant divider */
+.evo-divider {
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--accent-glow) 20%, var(--accent) 50%, var(--accent-glow) 80%, transparent 100% );
+    margin: 28px 0;
+    border: none;
+    border-radius: 2px;
+}
+
 /* Multiple spoiler boxes within one evolution card */
 .evo-card .spoiler-wrapper {
     display: flex;
@@ -407,7 +455,6 @@ header {
         }
 
     .evo-card .spoiler-box .btn-reveal {
-        margin-top: 8px;
         padding: 5px 10px;
         font-size: 0.75rem;
     }
@@ -434,6 +481,7 @@ header {
 .evo-hidden-text {
     color: var(--text-secondary);
     font-style: italic;
+    margin-left: 4px;
 }
 
 .btn-reveal-evo {
@@ -513,7 +561,6 @@ header {
 
 /* Buttons */
 .btn-reveal {
-    margin-top: 10px;
     padding: 7px 14px;
     font-size: 0.82rem;
     font-family: inherit;
