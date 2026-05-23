@@ -415,12 +415,12 @@ function renderEvolutions(evoInfo) {
                 <div class="evo-row">
                     <div class="evo-card">
                         <div class="evo-name-row" id="evoNameRow-${idx}">
-                            <span class="evo-hidden-text" id="evoHiddenText-${idx}">Name</span>
+                            <span class="evo-hidden-text" id="evoHiddenText-${idx}"></span>
                             <span style="display:none;" id="evoTargetSpan-${idx}">
                                 <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
                             </span>
                             <button class="btn-reveal-evo" onclick="toggleEvoReveal(${idx}, '${targetName}')" id="evoToggleBtn-${idx}">
-                                👁️
+                                Show Evolution
                             </button>
                         </div>
                         <div class="spoiler-wrapper">

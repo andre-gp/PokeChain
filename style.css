@@ -465,6 +465,7 @@ header {
     text-transform: capitalize;
     cursor: pointer;
     color: var(--accent);
+    margin-left: 20px;
 }
 
     .evo-target-name:hover {
