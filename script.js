@@ -8,7 +8,7 @@
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
-    prefix: 'pokeapi_cache_v2_',
+    prefix: 'pokeapi_cache_v2.1_',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
     get(url) {
         try {
@@ -90,11 +90,21 @@ const stripPokemonList = (data) => data.results.map(r => ({ name: r.name, url: r
 
 const stripSpecies = (data) => ({ evolution_chain_url: data.evolution_chain.url });
 
+// Strip species data including varieties (to find default form)
+const stripSpeciesWithVarieties = (data) => ({
+    evolution_chain_url: data.evolution_chain.url,
+    varieties: data.varieties.map(v => ({
+        name: v.pokemon.name,  // This is the form name usable in /pokemon/
+        is_default: v.is_default
+    }))
+});
+
 const stripPokemon = (data) => ({
     id: data.id,
     name: data.name,
     sprite: data.sprites.other['official-artwork']?.front_default || data.sprites.front_default,
-    types: data.types.map(t => t.type.name)
+    types: data.types.map(t => t.type.name),
+    species_url: data.species.url
 });
 
 function stripEvolutionDetails(details) {
@@ -323,7 +333,6 @@ async function searchPokemon(name) {
     const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
     if (!cleanName) return;
 
-    // Update input value if called directly via URL hash
     if (searchInput.value !== cleanName) {
         searchInput.value = cleanName;
     }
@@ -333,14 +342,51 @@ async function searchPokemon(name) {
     errorMsg.classList.remove('visible');
     resultsDiv.innerHTML = '';
     searchSpinner.classList.add('active');
+
     try {
-        const speciesData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon-species/${cleanName}`, stripSpecies);
-        const pokemonData = await cachedFetch(`https://pokeapi.co/api/v2/pokemon/${cleanName}`, stripPokemon);
-        const evoChainData = await cachedFetch(speciesData.evolution_chain_url, stripEvolutionChain);
+        // Primary flow: form name -> pokemon -> species via URL
+        let pokemonData = await cachedFetch(
+            `https://pokeapi.co/api/v2/pokemon/${cleanName}`,
+            stripPokemon
+        );
+
+        let speciesData = await cachedFetch(
+            pokemonData.species_url,
+            stripSpecies
+        );
+
+        const evoChainData = await cachedFetch(
+            speciesData.evolution_chain_url,
+            stripEvolutionChain
+        );
+
         renderResults(speciesData, pokemonData, evoChainData);
+
     } catch (err) {
+        // If pokemon fetch failed, try species endpoint (for base species names)
         if (err.message.includes('404') || err.message.includes('400')) {
-            showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
+            try {
+                // Fetch species to find default form
+                const speciesData = await cachedFetch(
+                    `https://pokeapi.co/api/v2/pokemon-species/${cleanName}`,
+                    stripSpeciesWithVarieties
+                );
+
+                // Find and redirect to default form
+                const defaultVariety = speciesData.varieties.find(v => v.is_default);
+                if (defaultVariety) {
+                    console.log(`[Redirect] "${cleanName}" → "${defaultVariety.name}"`);
+                    navigateTo(defaultVariety.name);  // Triggers new search with form name
+                    return;  // Exit early to avoid showing error
+                }
+
+                // No default form found
+                showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
+
+            } catch (speciesErr) {
+                // Species also doesn't exist
+                showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
+            }
         } else {
             showError('An error occurred. Please try again.');
         }
@@ -348,7 +394,6 @@ async function searchPokemon(name) {
         searchSpinner.classList.remove('active');
     }
 }
-
 function showError(msg) {
     errorMsg.textContent = msg;
     errorMsg.classList.add('visible');
