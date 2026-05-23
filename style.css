@@ -629,7 +629,23 @@ header {
     .breadcrumb .current {
         color: var(--text-primary);
         font-weight: 600;
+        text-transform: capitalize;
     }
+
+    /* Style for the "?" preview link */
+    .breadcrumb .evo-preview {
+        color: var(--accent);
+        text-decoration: none;
+        cursor: pointer;
+        font-style: italic;
+        font-weight: 600;
+        transition: color 0.2s;
+    }
+
+        .breadcrumb .evo-preview:hover {
+            text-decoration: underline;
+            color: var(--accent-hover);
+        }
 
 /* Footer */
 footer {

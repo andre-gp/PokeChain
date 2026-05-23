@@ -328,17 +328,28 @@ function renderResults(speciesData, pokemonData, evoChainData) {
     const evoInfo = findEvolutionInChain(evoChainData, pName);
     let html = '';
 
-    // Breadcrumb
-    if (evoInfo && evoInfo.path.length > 1) {
+    if (evoInfo) {
         html += '<div class="breadcrumb">';
+
+        // Render path history (current Pokémon + any parents)
         evoInfo.path.forEach((pNode, idx) => {
             if (idx > 0) html += '<span class="sep">→</span>';
             if (idx === evoInfo.path.length - 1) {
+                // Current Pokémon (capitalized)
                 html += `<span class="current">${pNode.name}</span>`;
             } else {
+                // Parent Pokémon (clickable)
                 html += `<a onclick="navigateTo('${pNode.name}')">${pNode.name}</a>`;
             }
         });
+
+        // If single evolution branch, append clickable "?" preview
+        if (evoInfo.evolvesTo.length === 1) {
+            const nextEvo = evoInfo.evolvesTo[0];
+            const nextName = nextEvo.species_name;
+            html += `<span class="sep">→</span><a class="evo-preview" onclick="navigateTo('${nextName}')">?</a>`;
+        }
+
         html += '</div>';
     }
 
@@ -474,6 +485,14 @@ function toggleMethodSpoiler(spoilerId, btnId) {
     btn.style.display = 'none';
 }
 
+function updateBreadcrumbPreview(currentName, nextName, isRevealed) {
+    const preview = document.querySelector('.breadcrumb .evo-preview');
+    if (preview && preview.onclick?.toString().includes(nextName)) {
+        preview.textContent = isRevealed ? nextName : '?';
+        preview.style.fontStyle = isRevealed ? 'normal' : 'italic';
+    }
+}
+
 function toggleEvoReveal(idx, targetName) {
     const hiddenText = document.getElementById(`evoHiddenText-${idx}`);
     const targetSpan = document.getElementById(`evoTargetSpan-${idx}`);
@@ -492,6 +511,11 @@ function toggleEvoReveal(idx, targetName) {
         hiddenText.style.display = 'inline';
         targetSpan.style.display = 'none';
         toggleBtn.innerHTML = '👁️';
+    }
+
+    const currentName = document.querySelector('.pokemon-name')?.textContent;
+    if (currentName) {
+        updateBreadcrumbPreview(currentName, targetName, hiddenText.style.display === 'none');
     }
 }
 
