@@ -525,13 +525,49 @@ function getMethodSummary(details) {
     if (!detailArray || detailArray.length === 0) return 'Unknown method';
 
     const parts = [];
-    detailArray.forEach(d => {
-        if (d?.trigger) {
-            const trigger = d.trigger;
+
+    // Helper: checks if a detail object has conditions beyond min_level
+    function isLevelUpConditional(d) {
+        // 1. No min_level set
+        if (d.min_level === null || d.min_level === undefined) return true;
+
+        // 2. Any other field has a meaningful value
+        for (const key in d) {
+            if (key === 'trigger' || key === 'min_level') continue;
+
+            const val = d[key];
+            if (val === null || val === undefined || val === '') continue;
+
+            // Handle booleans: only `true` counts as a condition
+            if (typeof val === 'boolean') {
+                if (val === true) return true;
+            } else {
+                // Any other non-empty value (including 0 for stats) is a condition
+                return true;
+            }
+        }
+        return false;
+    }
+
+    detailArray.forEach(item => {
+        console.log(item);
+        if (item?.trigger) {
+            const trigger = item.trigger;
             switch (trigger) {
                 case 'level-up':
-                    parts.push('Level up');
+                    // Support both: direct detail objects OR group objects with nested .details array
+                    const sources = [];
+                    if (item.details && Array.isArray(item.details)) {
+                        sources.push(...item.details);
+                    } else {
+                        sources.push(item);
+                    }
+                    
+                    // If ANY detail in the array is conditional, mark the whole method as conditional
+                    const isConditional = sources.some(isLevelUpConditional);
+                    parts.push(isConditional ? 'Level Up (conditional)' : 'Level up');
                     break;
+                    
                 case 'trade':
                     parts.push('Trade');
                     break;
