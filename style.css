@@ -423,8 +423,8 @@ header {
 
 /* Multiple spoiler boxes within one evolution card */
 .evo-card .spoiler-wrapper {
-    display: flex;
-    flex-direction: column;
+    width: fit-content;
+    max-width: 100%; /* Prevents overflow on small screens */
     gap: 12px;
     margin-top: 10px;
 }
