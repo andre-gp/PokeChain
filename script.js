@@ -201,6 +201,40 @@ async function loadPokemonList() {
 
 loadPokemonList();
 
+// Gender name cache (id -> name)
+const genderCache = {};
+
+async function loadGenderData() {
+    try {
+        // Fetch the main gender list
+        const data = await cachedFetch(
+            'https://pokeapi.co/api/v2/gender/',
+            (response) => response.results // Only keep the results array
+        );
+
+        // Build cache from the results, extracting ID from URL
+        data.forEach(gender => {
+            // Extract ID from URL: "https://pokeapi.co/api/v2/gender/1/" -> 1
+            const idMatch = gender.url.match(/\/(\d+)\/$/);
+            if (idMatch) {
+                const id = parseInt(idMatch[1]);
+                genderCache[id] = gender.name;
+            }
+        });
+
+        console.log(`Loaded ${Object.keys(genderCache).length} genders:`, genderCache);
+    } catch (e) {
+        console.error('Failed to load gender list', e);
+        // Fallback mapping if API fails
+        genderCache[1] = 'female';
+        genderCache[2] = 'male';
+        genderCache[3] = 'genderless';
+    }
+}
+
+// Load gender data when app starts
+loadGenderData();
+
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
     clearTimeout(searchTimeout);
@@ -665,8 +699,9 @@ function getMethodDetails(details) {
         if (d.party_species) {
             lines.push(`<strong>With ${d.party_species.replace(/-/g, ' ')} in party</strong>`);
         }
-        if (d.gender && d.gender > 0) {
-            lines.push('<strong>Gender:</strong> Female only');
+        if (d.gender !== null && d.gender !== undefined && d.gender > 0) {
+            const genderName = genderCache[d.gender] || 'unknown';
+            lines.push(`<strong>Gender:</strong> ${genderName} only`);
         }
         if (d.location) {
             const locName = d.location.replace(/-/g, ' ');
