@@ -6,6 +6,8 @@
     steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
 };
 
+const CURRENT_LANGUAGE = 'en';
+
 const API_GENDER = 'https://pokeapi.co/api/v2/gender/'
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
@@ -118,6 +120,14 @@ function stripChainNode(node) {
     };
 }
 
+function stripEvolutionTrigger(data) {
+    return {
+        id: data.id,
+        name: data.name,
+        names: data.names
+    }
+}
+
 const stripEvolutionChain = (data) => stripChainNode(data.chain);
 
 let allPokemonNames = [];
@@ -192,46 +202,6 @@ async function loadPokemonList() {
 loadPokemonList();
 
 //PokeCache.clear();
-
-/* - - - TRIGGER CACHE - - - */
-// Evolution trigger name cache (trigger_name -> localized display name)
-const triggerCache = {};
-let triggersLoaded = false;
-
-async function loadTriggerData() {
-    try {
-        // Fetch the evolution trigger list
-        const data = await cachedFetch(
-            'https://pokeapi.co/api/v2/evolution-trigger/',
-            (response) => response.results
-        );
-
-        // Fetch each trigger's details to get localized names
-        for (const trigger of data) {
-            const triggerDetails = await cachedFetch(
-                trigger.url,
-                (res) => ({
-                    names: res.names, // Keep the full names array for localization
-                    id: res.id
-                })
-            );
-
-            // Extract English name as default, fallback to first available
-            const englishName = triggerDetails.names.find(n => n.language.name === 'en')?.name;
-            const fallbackName = triggerDetails.names[0]?.name || trigger.name;
-
-            // Cache by trigger name (e.g., "use-item" -> "Use item")
-            triggerCache[trigger.name] = englishName || fallbackName;
-        }
-
-        triggersLoaded = true;
-        console.log(`Loaded ${Object.keys(triggerCache).length} evolution triggers:`, triggerCache);
-    } catch (e) {
-        console.error('Failed to load evolution triggers', e);
-    }
-}
-
-loadTriggerData();
 
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
@@ -532,7 +502,7 @@ function groupEvolutionMethods(details) {
 }
 
 async function renderMethodBox(methodGroup, boxIdx, parentIdx) {
-    const methodSummary = getMethodSummary([methodGroup]);
+    const methodSummary = await getMethodSummary([methodGroup]);
     const methodDetails = await getMethodDetails(methodGroup);
     const spoilerId = `spoiler-${parentIdx}-${boxIdx}`;
     const btnId = `triggerRevealBtn-${parentIdx}-${boxIdx}`;
@@ -591,7 +561,7 @@ function toggleEvoReveal(idx, targetName) {
     }
 }
 
-function getMethodSummary(details) {
+async function getMethodSummary(details) {
     // Accept either a single detail object or an array
     const detailArray = Array.isArray(details) ? details : [details];
     if (!detailArray || detailArray.length === 0) return 'Unknown method';
@@ -621,21 +591,23 @@ function getMethodSummary(details) {
         return false;
     }
 
-    detailArray.forEach(detail => {
-        console.log(detail);
+    for (const [idx, detail] of detailArray.entries()) {
         if (detail?.trigger) {
             const triggerKey = detail.trigger.name;
 
-            if (triggerKey === 'level-up') {
-                // If ANY key besides min_level is set, mark as 'Conditional'
-                const isConditional = isLevelUpConditional(detail);
+            const data = await cachedFetch(detail.trigger.url, stripEvolutionTrigger);
 
-                parts.push(isConditional ? 'Level Up (conditional)' : 'Level up');
-            } else {
-                parts.push(triggerCache[triggerKey] || parts.push(triggerKey.replace(/-/g, ' ')));
+            // Tries to find localized name in current language -> or first language -> or trigger name
+            let currentLanguageName = (data.names.find(n => n.language.name === CURRENT_LANGUAGE)?.name) || (data.names[0]?.name) || (data.name);
+
+            // If is level-up and ANY key besides min_level is set, mark as 'Conditional'
+            if (triggerKey === 'level-up' && isLevelUpConditional(detail)) {
+                currentLanguageName += ' (Conditional)';
             }
+            parts.push(currentLanguageName);
         }
-    });
+    }
+
     return parts;
 }
 
