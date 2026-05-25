@@ -8,7 +8,7 @@
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
-    prefix: 'pokeapi_cache_v2.1_',
+    prefix: 'pokeapi_cache_v2.2_',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
     get(url) {
         try {
@@ -80,7 +80,7 @@ async function cachedFetch(url, stripFn) {
         const data = await res.json();
         const toCache = stripFn ? stripFn(data) : data;
         PokeCache.set(url, toCache);
-        console.log("Found no cache for" + url + ". Sucessfully updated the cache data for it.");
+        console.log("Found no cache for " + url + " - Sucessfully updated the cache data for it.");
         return toCache;
     }
 }
@@ -107,33 +107,10 @@ const stripPokemon = (data) => ({
     species_url: data.species.url
 });
 
-function stripEvolutionDetails(details) {
-    return details.map(d => ({
-        trigger: d.trigger?.name,
-        min_level: d.min_level,
-        item: d.item?.name,
-        known_move: d.known_move?.name,
-        known_move_type: d.known_move_type?.name,
-        trade_species: d.trade_species?.name,
-        min_happiness: d.min_happiness,
-        min_beauty: d.min_beauty,
-        min_affection: d.min_affection,
-        needs_overworld_rain: d.needs_overworld_rain,
-        time_of_day: d.time_of_day,
-        relative_physical_stats: d.relative_physical_stats,
-        party_type: d.party_type,
-        party_species: d.party_species?.name,
-        gender: d.gender,
-        location: d.location?.name,
-        held_item: d.held_item?.name,
-        turn_upside_down: d.turn_upside_down
-    }));
-}
-
 function stripChainNode(node) {
     return {
         species_name: node.species.name,
-        evolution_details: stripEvolutionDetails(node.evolution_details),
+        evolution_details: node.evolution_details,
         evolves_to: node.evolves_to.map(child => stripChainNode(child))
     };
 }
@@ -211,6 +188,7 @@ async function loadPokemonList() {
 
 loadPokemonList();
 
+/* - - - GENDER CACHE - - - */
 // Gender name cache (id -> name)
 const genderCache = {};
 
@@ -244,6 +222,46 @@ async function loadGenderData() {
 
 // Load gender data when app starts
 loadGenderData();
+
+/* - - - TRIGGER CACHE - - - */
+// Evolution trigger name cache (trigger_name -> localized display name)
+const triggerCache = {};
+let triggersLoaded = false;
+
+async function loadTriggerData() {
+    try {
+        // Fetch the evolution trigger list
+        const data = await cachedFetch(
+            'https://pokeapi.co/api/v2/evolution-trigger/',
+            (response) => response.results
+        );
+
+        // Fetch each trigger's details to get localized names
+        for (const trigger of data) {
+            const triggerDetails = await cachedFetch(
+                trigger.url,
+                (res) => ({
+                    names: res.names, // Keep the full names array for localization
+                    id: res.id
+                })
+            );
+
+            // Extract English name as default, fallback to first available
+            const englishName = triggerDetails.names.find(n => n.language.name === 'en')?.name;
+            const fallbackName = triggerDetails.names[0]?.name || trigger.name;
+
+            // Cache by trigger name (e.g., "use-item" -> "Use item")
+            triggerCache[trigger.name] = englishName || fallbackName;
+        }
+
+        triggersLoaded = true;
+        console.log(`Loaded ${Object.keys(triggerCache).length} evolution triggers:`, triggerCache);
+    } catch (e) {
+        console.error('Failed to load evolution triggers', e);
+    }
+}
+
+loadTriggerData();
 
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
@@ -631,60 +649,14 @@ function getMethodSummary(details) {
     detailArray.forEach(item => {
         console.log(item);
         if (item?.trigger) {
-            const trigger = item.trigger;
-            switch (trigger) {
-                case 'level-up':
-                    // Support both: direct detail objects OR group objects with nested .details array
-                    const sources = [];
-                    if (item.details && Array.isArray(item.details)) {
-                        sources.push(...item.details);
-                    } else {
-                        sources.push(item);
-                    }
-                    
-                    // If ANY detail in the array is conditional, mark the whole method as conditional
-                    const isConditional = sources.some(isLevelUpConditional);
-                    parts.push(isConditional ? 'Level Up (conditional)' : 'Level up');
-                    break;
-                    
-                case 'trade':
-                    parts.push('Trade');
-                    break;
-                case 'use-item':
-                    parts.push('Use item');
-                    break;
-                case 'shed':
-                    parts.push('Shed');
-                    break;
-                case 'spin':
-                    parts.push('Spin');
-                    break;
-                case 'tower-of-darkness':
-                    parts.push('Tower of Darkness');
-                    break;
-                case 'tower-of-waters':
-                    parts.push('Tower of Waters');
-                    break;
-                case 'three-critical-hits':
-                    parts.push('Critical hits');
-                    break;
-                case 'take-damage':
-                    parts.push('Take damage');
-                    break;
-                case 'other':
-                    parts.push('Other');
-                    break;
-                case 'agile-style-move':
-                    parts.push('Agile style move');
-                    break;
-                case 'strong-style-move':
-                    parts.push('Strong style move');
-                    break;
-                case 'recoil-damage':
-                    parts.push('Recoil damage');
-                    break;
-                default:
-                    parts.push(trigger.replace(/-/g, ' '));
+            const triggerKey = item.trigger.name;
+
+            if (triggerKey === 'level-up') {
+                // If ANY detail in the array is conditional, mark the whole method as conditional
+                const isConditional = item.details.some(isLevelUpConditional);
+                parts.push(isConditional ? 'Level Up (conditional)' : 'Level up');
+            } else {
+                parts.push(triggerCache[triggerKey] || parts.push(triggerKey.replace(/-/g, ' ')));
             }
         }
     });
@@ -698,22 +670,20 @@ function getMethodDetails(details) {
     details.forEach(d => {
         if (d.min_level) lines.push(`<strong>Level:</strong> ${d.min_level}`);
 
-        // Fixed: d.item is already a string after stripping
         if (d.item) {
-            const itemName = d.item.replace(/-/g, ' ');
+            const itemName = d.item.name.replace(/-/g, ' ');
             lines.push(`<strong>Item:</strong> ${itemName}`);
         }
         if (d.known_move) {
             lines.push(`<strong>Must know move:</strong> ${d.known_move.replace(/-/g, ' ')}`);
         }
         if (d.known_move_type) {
-            lines.push(`<strong>Must know a move of type:</strong> ${d.known_move_type}`);
+            lines.push(`<strong>Must know a move of type:</strong> ${d.known_move_type.name}`);
         }
         if (d.trade_species) {
             lines.push(`<strong>Trade while holding:</strong> ${d.trade_species.replace(/-/g, ' ')}`);
         }
-        // Fixed: d.trigger is already a string
-        if (d.trigger === 'trade') {
+        if (d.trigger.name === 'trade') {
             if (!d.item && !d.trade_species) {
                 lines.push('<strong>Trade with another player</strong>');
             }
@@ -749,14 +719,14 @@ function getMethodDetails(details) {
             lines.push(`<strong>Gender:</strong> ${genderName} only`);
         }
         if (d.location) {
-            const locName = d.location.replace(/-/g, ' ');
+            const locName = d.location.name.replace(/-/g, ' ');
             lines.push(`<strong>Location:</strong> ${locName}`);
         }
         if (d.held_item) {
             lines.push(`<strong>Held item:</strong> ${d.held_item.replace(/-/g, ' ')}`);
         }
         if (d.turn_upside_down) {
-            lines.push('<strong>Turn 3DS upside down</strong>');
+            lines.push('<strong>Turn device upside down</strong>');
         }
     });
 
