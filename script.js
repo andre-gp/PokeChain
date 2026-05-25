@@ -63,6 +63,7 @@ const PokeCache = {
     }
 };
 
+
 // Cached fetch wrapper
 async function cachedFetch(url, stripFn) {
     const cached = PokeCache.get(url);
@@ -500,7 +501,7 @@ function renderEvolutions(evoInfo) {
         const targetName = evoTarget.species_name;
 
         // Group details into distinct method boxes
-        const methodGroups = groupEvolutionMethods(evoTarget.evolution_details);
+        const methodGroups = evoTarget.evolution_details;
 
         // Render one spoiler box per distinct method
         const spoilerBoxes = methodGroups.map((group, boxIdx) =>
@@ -558,7 +559,7 @@ function groupEvolutionMethods(details) {
 
 function renderMethodBox(methodGroup, boxIdx, parentIdx) {
     const methodSummary = getMethodSummary([methodGroup]);
-    const methodDetails = getMethodDetails(methodGroup.details);
+    const methodDetails = getMethodDetails(methodGroup);
     const spoilerId = `spoiler-${parentIdx}-${boxIdx}`;
     const btnId = `triggerRevealBtn-${parentIdx}-${boxIdx}`;
 
@@ -624,15 +625,15 @@ function getMethodSummary(details) {
     const parts = [];
 
     // Helper: checks if a detail object has conditions beyond min_level
-    function isLevelUpConditional(d) {
+    function isLevelUpConditional(details) {
         // 1. No min_level set
-        if (d.min_level === null || d.min_level === undefined) return true;
+        if (details.min_level === null || details.min_level === undefined) return true;
 
         // 2. Any other field has a meaningful value
-        for (const key in d) {
+        for (const key in details) {
             if (key === 'trigger' || key === 'min_level') continue;
 
-            const val = d[key];
+            const val = details[key];
             if (val === null || val === undefined || val === '') continue;
 
             // Handle booleans: only `true` counts as a condition
@@ -646,87 +647,100 @@ function getMethodSummary(details) {
         return false;
     }
 
-    detailArray.forEach(item => {
-        console.log(item);
-        if (item?.trigger) {
-            const triggerKey = item.trigger.name;
+    detailArray.forEach(detail => {
+        console.log(detail);
+        if (detail?.trigger) {
+            const triggerKey = detail.trigger.name;
 
             if (triggerKey === 'level-up') {
-                // If ANY detail in the array is conditional, mark the whole method as conditional
-                const isConditional = item.details.some(isLevelUpConditional);
+                // If ANY key besides min_level is set, mark as 'Conditional'
+                const isConditional = isLevelUpConditional(detail);
+
                 parts.push(isConditional ? 'Level Up (conditional)' : 'Level up');
             } else {
                 parts.push(triggerCache[triggerKey] || parts.push(triggerKey.replace(/-/g, ' ')));
             }
         }
     });
-    return [...new Set(parts)].join(', '); // Remove duplicates
+    return parts;
 }
 
 function getMethodDetails(details) {
-    if (!details || details.length === 0) return 'No additional details available.';
-
     const lines = [];
-    details.forEach(d => {
-        if (d.min_level) lines.push(`<strong>Level:</strong> ${d.min_level}`);
 
-        if (d.item) {
-            const itemName = d.item.name.replace(/-/g, ' ');
-            lines.push(`<strong>Item:</strong> ${itemName}`);
+    Object.entries(details).forEach(entry => {
+        const key = entry[0];
+        const value = entry[1];
+
+        if (value === null || value === undefined || (typeof value === 'boolean' && value === false) || value === '') {
+            return;
         }
-        if (d.known_move) {
-            lines.push(`<strong>Must know move:</strong> ${d.known_move.replace(/-/g, ' ')}`);
-        }
-        if (d.known_move_type) {
-            lines.push(`<strong>Must know a move of type:</strong> ${d.known_move_type.name}`);
-        }
-        if (d.trade_species) {
-            lines.push(`<strong>Trade while holding:</strong> ${d.trade_species.replace(/-/g, ' ')}`);
-        }
-        if (d.trigger.name === 'trade') {
-            if (!d.item && !d.trade_species) {
-                lines.push('<strong>Trade with another player</strong>');
-            }
-        }
-        if (d.min_happiness !== null && d.min_happiness !== undefined) {
-            lines.push(`<strong>Happiness:</strong> ${d.min_happiness} or higher`);
-        }
-        if (d.min_beauty !== null && d.min_beauty !== undefined) {
-            lines.push(`<strong>Beauty:</strong> ${d.min_beauty} or higher`);
-        }
-        if (d.min_affection !== null && d.min_affection !== undefined) {
-            lines.push(`<strong>Affection:</strong> ${d.min_affection} or higher`);
-        }
-        if (d.needs_overworld_rain) {
-            lines.push('<strong>Needs overworld rain</strong>');
-        }
-        if (d.time_of_day) {
-            lines.push(`<strong>Time of day:</strong> ${d.time_of_day}`);
-        }
-        if (d.relative_physical_stats !== null && d.relative_physical_stats !== undefined) {
-            if (d.relative_physical_stats > 0) lines.push('<strong>Attack &gt; Defense</strong>');
-            else if (d.relative_physical_stats < 0) lines.push('<strong>Defense &gt; Attack</strong>');
-            else lines.push('<strong>Attack = Defense</strong>');
-        }
-        if (d.party_type) {
-            lines.push(`<strong>Party type:</strong> ${d.party_type.replace(/-/g, ' ')}`);
-        }
-        if (d.party_species) {
-            lines.push(`<strong>With ${d.party_species.replace(/-/g, ' ')} in party</strong>`);
-        }
-        if (d.gender !== null && d.gender !== undefined && d.gender > 0) {
-            const genderName = genderCache[d.gender] || 'unknown';
-            lines.push(`<strong>Gender:</strong> ${genderName} only`);
-        }
-        if (d.location) {
-            const locName = d.location.name.replace(/-/g, ' ');
-            lines.push(`<strong>Location:</strong> ${locName}`);
-        }
-        if (d.held_item) {
-            lines.push(`<strong>Held item:</strong> ${d.held_item.replace(/-/g, ' ')}`);
-        }
-        if (d.turn_upside_down) {
-            lines.push('<strong>Turn device upside down</strong>');
+
+        switch (key) {
+            case 'min_level':
+                lines.push(`<strong>Level:</strong> ${value}`);
+                break;
+            case 'item':
+                const itemName = value.name.replace(/-/g, ' ');
+                lines.push(`<strong>Item:</strong> ${itemName}`);
+                break;
+            case 'known_move':
+                lines.push(`<strong>Must know move:</strong> ${value.name.replace(/-/g, ' ')}`);
+                break;
+            case 'known_move_type':
+                lines.push(`<strong>Must know a move of type:</strong> ${value.name}`);
+                break;
+            case 'trade_species':
+                lines.push(`<strong>Trade while holding:</strong> ${value.name.replace(/-/g, ' ')}`);
+                break;
+            case 'trigger':
+                if (value.name === 'trade' && !entries.trade_species) {
+                    lines.push('<strong>Trade with another player</strong>');
+                }
+                break;
+            case 'min_happiness':
+                lines.push(`<strong>Happiness:</strong> ${value} or higher`);
+                break;
+            case 'min_beauty':
+                lines.push(`<strong>Beauty:</strong> ${value} or higher`);
+                break;
+            case 'min_affection':
+                lines.push(`<strong>Affection:</strong> ${value} or higher`);
+                break;
+            case 'needs_overworld_rain':
+                lines.push('<strong>Needs overworld rain</strong>');
+                break;
+            case 'time_of_day':
+                lines.push(`<strong>Time of day:</strong> ${value}`);
+                break;
+            case 'relative_physical_stats':
+                if (value > 0) lines.push('<strong>Attack &gt; Defense</strong>');
+                else if (value < 0) lines.push('<strong>Defense &gt; Attack</strong>');
+                else lines.push('<strong>Attack = Defense</strong>');
+                break;
+            case 'party_type':
+                lines.push(`<strong>Must have a Pokémon of type ${value.name.replace(/-/g, ' ')} in the party</strong> `);
+                break;
+            case 'party_species':
+                lines.push(`<strong>Must have a ${value.name.replace(/-/g, ' ')} Pokémon in the party when evolving</strong>`);
+                break;
+            case 'gender':
+                const genderName = genderCache[value.name] || 'unknown';
+                lines.push(`<strong>Gender:</strong> ${genderName} only`);
+                break;
+            case 'location':
+                const locName = value.name.replace(/-/g, ' ');
+                lines.push(`<strong>Location:</strong> ${locName}`);
+                break;
+            case 'held_item':
+                lines.push(`<strong>Held item:</strong> ${value.name.replace(/-/g, ' ')}`);
+                break;
+            case 'turn_upside_down':
+                lines.push(`<strong>Turn device upside down</strong>`);
+                break;
+            default:
+                lines.push(`${key.replace(/-/g, ' ')} : ${value?.replace(/-/g, ' ')}`)
+                break;
         }
     });
 
