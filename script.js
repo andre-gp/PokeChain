@@ -6,6 +6,8 @@
     steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
 };
 
+const API_GENDER = 'https://pokeapi.co/api/v2/gender/'
+
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     prefix: 'pokeapi_cache_v2.2_',
@@ -189,40 +191,7 @@ async function loadPokemonList() {
 
 loadPokemonList();
 
-/* - - - GENDER CACHE - - - */
-// Gender name cache (id -> name)
-const genderCache = {};
-
-async function loadGenderData() {
-    try {
-        // Fetch the main gender list
-        const data = await cachedFetch(
-            'https://pokeapi.co/api/v2/gender/',
-            (response) => response.results // Only keep the results array
-        );
-
-        // Build cache from the results, extracting ID from URL
-        data.forEach(gender => {
-            // Extract ID from URL: "https://pokeapi.co/api/v2/gender/1/" -> 1
-            const idMatch = gender.url.match(/\/(\d+)\/$/);
-            if (idMatch) {
-                const id = parseInt(idMatch[1]);
-                genderCache[id] = gender.name;
-            }
-        });
-
-        console.log(`Loaded ${Object.keys(genderCache).length} genders:`, genderCache);
-    } catch (e) {
-        console.error('Failed to load gender list', e);
-        // Fallback mapping if API fails
-        genderCache[1] = 'female';
-        genderCache[2] = 'male';
-        genderCache[3] = 'genderless';
-    }
-}
-
-// Load gender data when app starts
-loadGenderData();
+//PokeCache.clear();
 
 /* - - - TRIGGER CACHE - - - */
 // Evolution trigger name cache (trigger_name -> localized display name)
@@ -379,7 +348,7 @@ async function searchPokemon(name) {
             stripEvolutionChain
         );
 
-        renderResults(speciesData, pokemonData, evoChainData);
+        await renderResults(speciesData, pokemonData, evoChainData);
 
     } catch (err) {
         // If pokemon fetch failed, try species endpoint (for base species names)
@@ -418,7 +387,7 @@ function showError(msg) {
     errorMsg.classList.add('visible');
 }
 
-function renderResults(speciesData, pokemonData, evoChainData) {
+async function renderResults(speciesData, pokemonData, evoChainData) {
     const pName = pokemonData.name;
     const pId = pokemonData.id;
     const pSprite = pokemonData.sprite;
@@ -466,7 +435,7 @@ function renderResults(speciesData, pokemonData, evoChainData) {
                     </div>
                     <div class="divider"></div>
                     <div class="evolution-section">
-                        ${renderEvolutions(evoInfo, pName)}
+                        ${await renderEvolutions(evoInfo, pName)}
                     </div>
                 </div>
             `;
@@ -490,22 +459,27 @@ function findEvolutionInChain(chainNode, targetName) {
     return traverse(chainNode, []);
 }
 
-function renderEvolutions(evoInfo) {
+async function renderEvolutions(evoInfo) {
     if (!evoInfo || evoInfo.evolvesTo.length === 0) {
         return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
     }
 
     let html = '';
 
-    evoInfo.evolvesTo.forEach((evoTarget, idx) => {
+    for (const [idx, evoTarget] of evoInfo.evolvesTo.entries()) {
         const targetName = evoTarget.species_name;
 
         // Group details into distinct method boxes
         const methodGroups = evoTarget.evolution_details;
 
         // Render one spoiler box per distinct method
-        const spoilerBoxes = methodGroups.map((group, boxIdx) =>
-            renderMethodBox(group, boxIdx, idx)
+
+        const spoilerBoxes = (
+            await Promise.all(
+                methodGroups.map((group, boxIdx) =>
+                    renderMethodBox(group, boxIdx, idx)
+                )
+            )
         ).join('');
 
         html += `
@@ -529,7 +503,7 @@ function renderEvolutions(evoInfo) {
             </div>
             ${idx < evoInfo.evolvesTo.length - 1 ? '<div class="evo-divider"></div>' : ''}
         `;
-    });
+    }
     return html;
 }
 
@@ -557,9 +531,9 @@ function groupEvolutionMethods(details) {
     return Array.from(groups.values());
 }
 
-function renderMethodBox(methodGroup, boxIdx, parentIdx) {
+async function renderMethodBox(methodGroup, boxIdx, parentIdx) {
     const methodSummary = getMethodSummary([methodGroup]);
-    const methodDetails = getMethodDetails(methodGroup);
+    const methodDetails = await getMethodDetails(methodGroup);
     const spoilerId = `spoiler-${parentIdx}-${boxIdx}`;
     const btnId = `triggerRevealBtn-${parentIdx}-${boxIdx}`;
 
@@ -665,15 +639,12 @@ function getMethodSummary(details) {
     return parts;
 }
 
-function getMethodDetails(details) {
+async function getMethodDetails(details) {
     const lines = [];
 
-    Object.entries(details).forEach(entry => {
-        const key = entry[0];
-        const value = entry[1];
-
+    for (const [key, value] of Object.entries(details)) {
         if (value === null || value === undefined || (typeof value === 'boolean' && value === false) || value === '') {
-            return;
+            continue;
         }
 
         switch (key) {
@@ -725,8 +696,8 @@ function getMethodDetails(details) {
                 lines.push(`<strong>Must have a ${value.name.replace(/-/g, ' ')} Pokémon in the party when evolving</strong>`);
                 break;
             case 'gender':
-                const genderName = genderCache[value.name] || 'unknown';
-                lines.push(`<strong>Gender:</strong> ${genderName} only`);
+                const gender = await cachedFetch(API_GENDER + value);
+                lines.push(`<strong>Gender:</strong> ${gender.name} only`);
                 break;
             case 'location':
                 const locName = value.name.replace(/-/g, ' ');
@@ -742,7 +713,7 @@ function getMethodDetails(details) {
                 lines.push(`${key.replace(/-/g, ' ')} : ${value?.replace(/-/g, ' ')}`)
                 break;
         }
-    });
+    }
 
     return lines.length === 0 ? 'No additional details available.' : lines.join('<br>');
 }
