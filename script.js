@@ -73,7 +73,7 @@ async function cachedFetch(url, stripFn) {
     const cached = PokeCache.get(url);
 
     if (cached) {
-        console.log("Successfully retrieved cached object for " + url);
+        console.log("Successfully retrieved cached object for " + url + " - " + getJsonSize(cached) + " KB");
         return cached;
     } else {
         const res = await fetch(url);
@@ -85,7 +85,7 @@ async function cachedFetch(url, stripFn) {
         const data = await res.json();
         const toCache = stripFn ? stripFn(data) : data;
         PokeCache.set(url, toCache);
-        console.log("Found no cache for " + url + " - Sucessfully updated the cache data for it.");
+        console.log("Found no cache for " + url + " - Sucessfully updated the cache data for it. - " + getJsonSize(toCache) + " KB");
         return toCache;
     }
 }
@@ -112,14 +112,6 @@ const stripPokemon = (data) => ({
     species_url: data.species.url
 });
 
-function stripChainNode(node) {
-    return {
-        species_name: node.species.name,
-        evolution_details: node.evolution_details,
-        evolves_to: node.evolves_to.map(child => stripChainNode(child))
-    };
-}
-
 function stripEvolutionTrigger(data) {
     return {
         id: data.id,
@@ -127,8 +119,6 @@ function stripEvolutionTrigger(data) {
         names: data.names
     }
 }
-
-const stripEvolutionChain = (data) => stripChainNode(data.chain);
 
 let allPokemonNames = [];
 let searchTimeout = null;
@@ -314,8 +304,7 @@ async function searchPokemon(name) {
         );
 
         const evoChainData = await cachedFetch(
-            speciesData.evolution_chain_url,
-            stripEvolutionChain
+            speciesData.evolution_chain_url
         );
 
         await renderResults(speciesData, pokemonData, evoChainData);
@@ -362,7 +351,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
     const pId = pokemonData.id;
     const pSprite = pokemonData.sprite;
     const pTypes = pokemonData.types;
-    const evoInfo = findEvolutionInChain(evoChainData, pName);
+    const evoInfo = findEvolutionInChain(evoChainData.chain, pName);
     let html = '';
 
     if (evoInfo) {
@@ -383,7 +372,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         // If single evolution branch, append clickable "?" preview
         if (evoInfo.evolvesTo.length === 1) {
             const nextEvo = evoInfo.evolvesTo[0];
-            const nextName = nextEvo.species_name;
+            const nextName = nextEvo.species.name;
             html += `<span class="sep">→</span><a class="evo-preview" onclick="navigateTo('${nextName}')">?</a>`;
         }
 
@@ -415,8 +404,8 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
 
 function findEvolutionInChain(chainNode, targetName) {
     function traverse(node, currentPath) {
-        currentPath = [...currentPath, { name: node.species_name }];
-        if (node.species_name === targetName) {
+        currentPath = [...currentPath, { name: node.species.name }];
+        if (node.species.name === targetName) {
             return { path: currentPath, details: node.evolution_details, evolvesTo: node.evolves_to };
         }
         for (const child of node.evolves_to) {
@@ -437,7 +426,7 @@ async function renderEvolutions(evoInfo) {
     let html = '';
 
     for (const [idx, evoTarget] of evoInfo.evolvesTo.entries()) {
-        const targetName = evoTarget.species_name;
+        const targetName = evoTarget.species.name;
 
         // Group details into distinct method boxes
         const methodGroups = evoTarget.evolution_details;
@@ -697,3 +686,28 @@ function toggleSpoiler(idx) {
     const btnReveal = document.getElementById(`triggerRevealBtn-${idx}`);
     btnReveal.style.display = 'none';
 }
+
+
+function getLocalStorageSize() {
+    let total = 0;
+
+    for (const key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+            total += localStorage[key].length + key.length;
+        }
+    }
+
+    // UTF-16: ~2 bytes per character
+    return total * 2;
+}
+
+function getJsonSize(json) {
+    const jsonString = JSON.stringify(json);
+    const bytes = new TextEncoder().encode(jsonString).length;
+    return (bytes / 1024).toFixed(2);
+    console.log(bytes + " bytes");
+}
+
+const bytes = getLocalStorageSize();
+
+console.log(`Approx size: ${(bytes / 1024).toFixed(2)} KB`);
