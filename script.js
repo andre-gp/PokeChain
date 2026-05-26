@@ -90,10 +90,21 @@ async function cachedFetch(url, stripFn) {
     }
 }
 
+async function cachedFetchNameInCurrentLanguage(url) {
+    return getCurrentLanguageName(await cachedFetch(url, stripToOnlyNames))
+}
+
 // Strip functions to minimize localStorage footprint
 const stripPokemonList = (data) => data.results.map(r => ({ name: r.name, url: r.url }));
 
-const stripSpecies = (data) => ({ evolution_chain_url: data.evolution_chain.url });
+const stripSpecies = (data) => ({
+    evolution_chain: data.evolution_chain,
+    evolves_from_species: data.evolves_from_species,
+    id: data.id,
+    name: data.name,
+    names: data.names,
+    varieties: data.varieties
+});
 
 // Strip species data including varieties (to find default form)
 const stripSpeciesWithVarieties = (data) => ({
@@ -113,6 +124,15 @@ const stripPokemon = (data) => ({
 });
 
 function stripEvolutionTrigger(data) {
+    return {
+        id: data.id,
+        name: data.name,
+        names: data.names
+    }
+}
+
+
+function stripToOnlyNames(data) {
     return {
         id: data.id,
         name: data.name,
@@ -304,7 +324,7 @@ async function searchPokemon(name) {
         );
 
         const evoChainData = await cachedFetch(
-            speciesData.evolution_chain_url
+            speciesData.evolution_chain.url
         );
 
         await renderResults(speciesData, pokemonData, evoChainData);
@@ -580,19 +600,40 @@ async function getMethodSummary(details) {
         return false;
     }
 
+    function isTradeConditional(details) {
+        for (const key in details) {
+            if (key === 'trigger') continue;
+
+            const val = details[key];
+            if (val === null || val === undefined || val === '') continue;
+
+            // Handle booleans: only `true` counts as a condition
+            if (typeof val === 'boolean') {
+                if (val === true) return true;
+            } else {
+                // Any other non-empty value (including 0 for stats) is a condition
+                return true;
+            }
+        }
+        return false;
+    }
+
     for (const [idx, detail] of detailArray.entries()) {
         if (detail?.trigger) {
             const triggerKey = detail.trigger.name;
 
-            const data = await cachedFetch(detail.trigger.url, stripEvolutionTrigger);
+            const data = await cachedFetch(detail.trigger.url, stripToOnlyNames);
 
             // Tries to find localized name in current language -> or first language -> or trigger name
-            let currentLanguageName = (data.names.find(n => n.language.name === CURRENT_LANGUAGE)?.name) || (data.names[0]?.name) || (data.name);
+            let currentLanguageName = getCurrentLanguageName(data);
 
-            // If is level-up and ANY key besides min_level is set, mark as 'Conditional'
-            if (triggerKey === 'level-up' && isLevelUpConditional(detail)) {
+            // Mark the trigger as conditional
+            if ((triggerKey === 'level-up' && isLevelUpConditional(detail)) ||
+                (triggerKey === 'trade' && isTradeConditional(detail))) {
                 currentLanguageName += ' (Conditional)';
             }
+
+
             parts.push(currentLanguageName);
         }
     }
@@ -609,74 +650,101 @@ async function getMethodDetails(details) {
         }
 
         switch (key) {
-            case 'min_level':
-                lines.push(`<strong>Level:</strong> ${value}`);
+            case 'base_form':
+                lines.push(`<strong>Base Form:</strong> ${value}`);
+                break;
+            case 'gender':
+                const gender = await cachedFetch(API_GENDER + value);
+                lines.push(`<strong>Gender:</strong> ${gender.name} only`);
+                break;
+            case 'held_item':
+                lines.push(`<strong>Held item:</strong> ${value.name.replace(/-/g, ' ')}`);
                 break;
             case 'item':
-                const itemName = value.name.replace(/-/g, ' ');
-                lines.push(`<strong>Item:</strong> ${itemName}`);
+                lines.push(`<strong>Item:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
                 break;
             case 'known_move':
-                lines.push(`<strong>Must know move:</strong> ${value.name.replace(/-/g, ' ')}`);
+                lines.push(`<strong>Must know move:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
                 break;
             case 'known_move_type':
-                lines.push(`<strong>Must know a move of type:</strong> ${value.name}`);
+                lines.push(`<strong>Must know a move of type:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
                 break;
-            case 'trade_species':
-                lines.push(`<strong>Trade while holding:</strong> ${value.name.replace(/-/g, ' ')}`);
-                break;
-            case 'trigger':
-                if (value.name === 'trade' && !entries.trade_species) {
-                    lines.push('<strong>Trade with another player</strong>');
-                }
-                break;
-            case 'min_happiness':
-                lines.push(`<strong>Happiness:</strong> ${value} or higher`);
-                break;
-            case 'min_beauty':
-                lines.push(`<strong>Beauty:</strong> ${value} or higher`);
+            case 'location':
+                lines.push(`<strong>Location:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
                 break;
             case 'min_affection':
                 lines.push(`<strong>Affection:</strong> ${value} or higher`);
                 break;
+            case 'min_beauty':
+                lines.push(`<strong>Beauty:</strong> ${value} or higher`);
+                break;
+            case 'min_damage_taken':
+                lines.push(`<strong>Damage Taken:</strong> ${value} or higher`)
+                break;
+            case 'min_happiness':
+                lines.push(`<strong>Happiness:</strong> ${value} or higher`);
+                break;
+            case 'min_level':
+                lines.push(`<strong>Level:</strong> ${value}`);
+                break;
+            case 'min_move_count':
+                lines.push(`<strong>Number of times:</strong> ${value}`)
+                break
+            case 'min_steps':
+                lines.push(`<strong>Number of steps taken:</strong> ${value} or higher`)
+                break;
+            case 'needs_multiplayer':
+                lines.push(`<strong>Multiplayer link play is needed</strong>`);
+                break;
             case 'needs_overworld_rain':
                 lines.push('<strong>Needs overworld rain</strong>');
                 break;
-            case 'time_of_day':
-                lines.push(`<strong>Time of day:</strong> ${value}`);
+            case 'party_species':
+                lines.push(`Must have a <strong>${getCurrentLanguageName(await cachedFetch(value.url, stripSpecies))}</strong> in the party`);
+                break;
+            case 'party_type':
+                lines.push(`<strong>Must have a Pokémon of type ${await cachedFetchNameInCurrentLanguage(value.url)} in the party</strong> `);
+                break;
+            case 'region':
+                const regionName = getCurrentLanguageName(await cachedFetch(value.url, stripToOnlyNames));
+                lines.push(`<strong>Region:</strong> ${regionName}`);
                 break;
             case 'relative_physical_stats':
                 if (value > 0) lines.push('<strong>Attack &gt; Defense</strong>');
                 else if (value < 0) lines.push('<strong>Defense &gt; Attack</strong>');
                 else lines.push('<strong>Attack = Defense</strong>');
                 break;
-            case 'party_type':
-                lines.push(`<strong>Must have a Pokémon of type ${value.name.replace(/-/g, ' ')} in the party</strong> `);
+            case 'time_of_day':
+                lines.push(`<strong>Time of day:</strong> ${value}`);
                 break;
-            case 'party_species':
-                lines.push(`<strong>Must have a ${value.name.replace(/-/g, ' ')} Pokémon in the party when evolving</strong>`);
+            case 'trade_species':
+                lines.push(`Must be traded with another player for a <strong>${getCurrentLanguageName(await cachedFetch(value.url, stripSpecies))}</strong> `);
                 break;
-            case 'gender':
-                const gender = await cachedFetch(API_GENDER + value);
-                lines.push(`<strong>Gender:</strong> ${gender.name} only`);
-                break;
-            case 'location':
-                const locName = value.name.replace(/-/g, ' ');
-                lines.push(`<strong>Location:</strong> ${locName}`);
-                break;
-            case 'held_item':
-                lines.push(`<strong>Held item:</strong> ${value.name.replace(/-/g, ' ')}`);
+            case 'trigger':
+                if (value.name === 'trade' && !details.trade_species) {
+                    lines.push('<strong>Trade with another player</strong>');
+                }
                 break;
             case 'turn_upside_down':
                 lines.push(`<strong>Turn device upside down</strong>`);
                 break;
             default:
-                lines.push(`${key.replace(/-/g, ' ')} : ${value?.replace(/-/g, ' ')}`)
+                if (value?.name) {
+                    lines.push(`${key.replace('-', ' ')} : ${value.name}`)
+                } else {
+                    lines.push(`${key.replace('-', ' ')} : ${value}`)
+                }
                 break;
         }
     }
 
     return lines.length === 0 ? 'No additional details available.' : lines.join('<br>');
+}
+
+function getCurrentLanguageName(data) {
+    return (data.names.find(n => n.language.name === CURRENT_LANGUAGE)?.name)
+        || (data.names[0]?.name)
+        || (data.name);
 }
 
 function toggleSpoiler(idx) {
