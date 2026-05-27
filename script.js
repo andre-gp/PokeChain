@@ -12,8 +12,14 @@ const API_GENDER = 'https://pokeapi.co/api/v2/gender/'
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
-    prefix: 'pokeapi_cache_v2.3_',
+    basePrefix: 'pokeapi_cache_',
+    version: 'v2.4',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
+
+    get prefix() {
+        return this.basePrefix + this.version + '_';
+    },
+
     get(url) {
         try {
             const key = this.prefix + url;
@@ -51,6 +57,17 @@ const PokeCache = {
     },
     clearOld() {
         console.log("[CACHE] Clearing old cache data.")
+
+        // Remove every cache entry from older versions
+        Object.keys(localStorage).forEach(key => {
+            if (
+                key.startsWith(this.basePrefix) &&
+                !key.startsWith(this.prefix)
+            ) {
+                localStorage.removeItem(key);
+            }
+        });
+
         const keys = Object.keys(localStorage).filter(k => k.startsWith(this.prefix));
         // Remove half of oldest caches if quota hit
         keys.sort((a, b) => {
