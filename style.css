@@ -459,17 +459,66 @@ header {
         font-size: 0.75rem;
     }
 
+    /* Links inside evolution method details */
+    .evo-card .spoiler-box a,
+    .spoiler-details a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        border-bottom: 1px dashed transparent;
+        border-bottom-color: var(--accent);
+        background: rgba(124, 111, 232, 0.1);
+    }
+
+        .evo-card .spoiler-box a:hover,
+        .spoiler-details a:hover {
+            color: var(--accent-hover);
+            background: rgba(124, 111, 232, 0.3);
+        }
+
+        .evo-card .spoiler-box a:active,
+        .spoiler-details a:active {
+            transform: scale(0.98);
+        }
+
+.evo-target-container {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+    transition: opacity 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    text-align: center
+}
+
+    .evo-target-container.revealed {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+    }
+
+/* Clean up the existing link styles */
 .evo-target-name {
     font-weight: 600;
     font-size: 1.05rem;
     text-transform: capitalize;
     cursor: pointer;
     color: var(--accent);
-    margin-left: 20px;
+    margin-left: 16px;
+    display: inline-flex;
+    align-items: center;
+    text-align: center;
+    transition: color 0.2s ease, transform 0.15s ease;
 }
 
     .evo-target-name:hover {
-        text-decoration: underline;
+        color: var(--accent-hover);
+    }
+
+    .evo-target-name:active {
+        transform: scale(0.97);
     }
 
 .evo-name-row {
@@ -497,9 +546,11 @@ header {
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.2s;
+    margin-left: 10px;
 }
 
     .btn-reveal-evo:hover {
+        transform: scale(1.1);
         color: var(--accent);
         background: var(--bg-primary);
     }

@@ -584,13 +584,13 @@ async function renderEvolutions(evoInfo, pName) {
                 <div class="evo-row">
                     <div class="evo-card">
                         <div class="evo-name-row" id="evoNameRow-${evoId}">
-                            <span class="evo-hidden-text" id="evoHiddenText-${evoId}"></span>
-                            <span style="display:none;" id="evoTargetSpan-${evoId}">
-                                <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
-                            </span>
                             <button class="btn-reveal-evo" onclick="toggleEvoReveal('${evoId}', '${targetName}')" id="evoToggleBtn-${evoId}">
                                 Show Evolution
                             </button>
+                            <span class="evo-hidden-text" id="evoHiddenText-${evoId}"></span>
+                            <span class="evo-target-container" id="evoTargetSpan-${evoId}">
+                                <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
+                            </span>
                         </div>
                         <div class="spoiler-wrapper">
                             ${spoilerBoxes}
@@ -669,24 +669,23 @@ function toggleEvoReveal(idx, targetName) {
     const targetSpan = document.getElementById(`evoTargetSpan-${idx}`);
     const toggleBtn = document.getElementById(`evoToggleBtn-${idx}`);
 
-    if (hiddenText.style.display !== 'none') {
+    if (!targetSpan.classList.contains('revealed')) {
         // Reveal
         hiddenText.style.display = 'none';
-        targetSpan.style.display = 'inline';
+        targetSpan.classList.add('revealed'); 
         toggleBtn.innerHTML = '🙈';
-
-        // I'm not sure if I prefer the button toggling or not.
         toggleBtn.style.display = 'none';
     } else {
         // Hide
         hiddenText.style.display = 'inline';
-        targetSpan.style.display = 'none';
+        targetSpan.classList.remove('revealed');
         toggleBtn.innerHTML = '👁️';
+        toggleBtn.style.display = 'inline-flex';
     }
 
     const currentName = document.querySelector('.pokemon-name')?.textContent;
     if (currentName) {
-        updateBreadcrumbPreview(currentName, targetName, hiddenText.style.display === 'none');
+        updateBreadcrumbPreview(currentName, targetName, targetSpan.classList.contains('revealed'));
     }
 }
 
