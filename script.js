@@ -411,7 +411,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         html += '</div>';
     }
 
-    const results = await Promise.all(
+    let results = await Promise.all(
         speciesData.varieties.map(async (variety, idx) => {
 
             const pkmnData = await cachedFetch(variety.pokemon.url, stripPokemon);
@@ -428,15 +428,40 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
 
             const myEvos = await findMyEvos(evoChainData.chain, speciesData, pkmnData);        
 
-            return await renderMainCard(pName, pId, pSprite, pTypes, myEvos);
+            return await renderMainCard(pName, pId, pSprite, pTypes, myEvos, idx < 1);
         })
     );
 
-    console.log(results);
+    results = results.filter(res => res !== "")
 
-    results.forEach(res => html += res);
+    results.forEach((res, idx) => {
+        html += res;
+    });
+
+    if (results.length > 1) {
+        html += `
+            <div class="reveal-forms-wrapper" id="revealFormsWrapper">
+                <button class="btn-reveal-forms" onclick="showAlternativeForms()">
+                    🔍 Reveal other forms
+                </button>
+                <div id="otherFormsContainer" style="display: none;"></div>
+            </div>
+        `;
+    }
+    
 
     resultsDiv.innerHTML = html;
+}
+
+function showAlternativeForms() {
+    const alternativeForms = document.getElementsByClassName(`result-card`);
+    
+    for (const element of alternativeForms) {
+        element.removeAttribute("style");
+    }
+
+    const revealBtn = document.getElementById(`revealFormsWrapper`);
+    revealBtn.style.display = 'none';
 }
 
 async function renderBreadcrumbs(speciesData) {
@@ -464,7 +489,7 @@ async function renderBreadcrumbs(speciesData) {
         }
     });
 
-    const myEvos = await findMyEvos(evoChainData.chain, speciesData, pokemonData, true);
+    const myEvos = await findMyEvos(evoChainData.chain, speciesData, pokemonData);
 
     // If single evolution branch, append clickable "?" preview
     if (myEvos.length === 1) {
