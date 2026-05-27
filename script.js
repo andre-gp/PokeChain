@@ -67,7 +67,6 @@ const PokeCache = {
     }
 };
 
-
 // Cached fetch wrapper
 async function cachedFetch(url, stripFn) {
     const cached = PokeCache.get(url);
@@ -106,22 +105,27 @@ const stripSpecies = (data) => ({
     varieties: data.varieties
 });
 
-// Strip species data including varieties (to find default form)
-const stripSpeciesWithVarieties = (data) => ({
-    evolution_chain_url: data.evolution_chain.url,
-    varieties: data.varieties.map(v => ({
-        name: v.pokemon.name,  // This is the form name usable in /pokemon/
-        is_default: v.is_default
-    }))
-});
-
 const stripPokemon = (data) => ({
+    forms: data.forms,
     id: data.id,
     name: data.name,
     sprite: data.sprites.other['official-artwork']?.front_default || data.sprites.front_default,
-    types: data.types.map(t => t.type.name),
-    species_url: data.species.url
+    types: data.types,
+    species: data.species
 });
+
+const stripForm = (data) => ({
+    form_name: data.form_name,
+    form_names: data.form_names,
+    id: data.id,
+    is_battle_only: data.is_battle_only,
+    is_default: data.is_default,
+    is_mega: data.is_mega,
+    name: data.name,
+    names: data.names,
+    pokemon: data.pokemon,
+    types: data.types
+})
 
 function stripEvolutionTrigger(data) {
     return {
@@ -130,7 +134,6 @@ function stripEvolutionTrigger(data) {
         names: data.names
     }
 }
-
 
 function stripToOnlyNames(data) {
     return {
@@ -319,7 +322,7 @@ async function searchPokemon(name) {
         );
 
         let speciesData = await cachedFetch(
-            pokemonData.species_url,
+            pokemonData.species.url,
             stripSpecies
         );
 
@@ -336,14 +339,14 @@ async function searchPokemon(name) {
                 // Fetch species to find default form
                 const speciesData = await cachedFetch(
                     `https://pokeapi.co/api/v2/pokemon-species/${cleanName}`,
-                    stripSpeciesWithVarieties
+                    stripSpecies
                 );
 
                 // Find and redirect to default form
                 const defaultVariety = speciesData.varieties.find(v => v.is_default);
                 if (defaultVariety) {
-                    console.log(`[Redirect] "${cleanName}" → "${defaultVariety.name}"`);
-                    navigateTo(defaultVariety.name);  // Triggers new search with form name
+                    console.log(`[Redirect] "${cleanName}" → "${defaultVariety.pokemon.name}"`);
+                    navigateTo(defaultVariety.pokemon.name);  // Triggers new search with form name
                     return;  // Exit early to avoid showing error
                 }
 
@@ -367,20 +370,28 @@ function showError(msg) {
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData) {
-    const pName = pokemonData.name;
+    const pName = getCurrentLanguageName(speciesData);
     const pId = pokemonData.id;
     const pSprite = pokemonData.sprite;
-    const pTypes = pokemonData.types;
-    const evoInfo = findEvolutionInChain(evoChainData.chain, pName);
+    const pTypes = await Promise.all(pokemonData.types.map(slot => cachedFetchNameInCurrentLanguage(slot.type.url)));
     let html = '';
 
-    if (evoInfo) {
+    if (evoChainData) {
         html += '<div class="breadcrumb">';
 
-        // Render path history (current Pokémon + any parents)
-        evoInfo.path.forEach((pNode, idx) => {
+        let currentNode = speciesData;
+
+        path = [{ name: currentNode.name }]
+
+        // 1. Find root
+        while (currentNode.evolves_from_species) {
+            currentNode = await cachedFetch(currentNode.evolves_from_species.url, stripSpecies);
+            path = [{ name: currentNode.name }, ...path];
+        }
+
+        path.forEach((pNode, idx) => {
             if (idx > 0) html += '<span class="sep">→</span>';
-            if (idx === evoInfo.path.length - 1) {
+            if (idx === path.length - 1) {
                 // Current Pokémon (capitalized)
                 html += `<span class="current">${pNode.name}</span>`;
             } else {
@@ -389,26 +400,92 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
             }
         });
 
+        const myEvos = await findMyEvos(evoChainData.chain, speciesData, pokemonData, true);
+
         // If single evolution branch, append clickable "?" preview
-        if (evoInfo.evolvesTo.length === 1) {
-            const nextEvo = evoInfo.evolvesTo[0];
-            const nextName = nextEvo.species.name;
-            html += `<span class="sep">→</span><a class="evo-preview" onclick="navigateTo('${nextName}')">?</a>`;
+        if (myEvos.length === 1) {
+            const nextEvo = myEvos[0];
+            html += `<span class="sep">→</span><a class="evo-preview" onclick="navigateTo('${nextEvo.species.name}')">?</a>`;
         }
 
         html += '</div>';
     }
 
-    // Main card
-    html += `
-                <div class="result-card">
+    const results = await Promise.all(
+        speciesData.varieties.map(async (variety, idx) => {
+
+            const pkmnData = await cachedFetch(variety.pokemon.url, stripPokemon);
+            const mainForm = await cachedFetch(pkmnData.forms[0].url, stripForm);
+
+            if (mainForm.is_mega || mainForm.form_name === 'gmax' || mainForm.form_name === 'starter') {
+                return '';
+            }
+
+            const pName = pkmnData.name;
+            const pId = pkmnData.id;
+            const pSprite = pkmnData.sprite;
+            const pTypes = await Promise.all(pkmnData.types.map(slot => cachedFetchNameInCurrentLanguage(slot.type.url)));
+
+            const myEvos = await findMyEvos(evoChainData.chain, speciesData, pkmnData);        
+
+            return await renderMainCard(pName, pId, pSprite, pTypes, myEvos);
+        })
+    );
+
+    console.log(results);
+
+    results.forEach(res => html += res);
+
+    resultsDiv.innerHTML = html;
+}
+
+async function renderBreadcrumbs(speciesData) {
+
+    html = '<div class="breadcrumb">';
+
+    let currentNode = speciesData;
+
+    path = [{ name: currentNode.name }]
+
+    // 1. Find root
+    while (currentNode.evolves_from_species) {
+        currentNode = await cachedFetch(currentNode.evolves_from_species.url, stripSpecies);
+        path = [{ name: currentNode.name }, ...path];
+    }
+
+    path.forEach((node, idx) => {
+        if (idx > 0) html += '<span class="sep">→</span>';
+        if (idx === path.length - 1) {
+            // Current Pokémon (capitalized)
+            html += `<span class="current">${node.name}</span>`;
+        } else {
+            // Parent Pokémon (clickable)
+            html += `<a onclick="navigateTo('${node.name}')">${node.name}</a>`;
+        }
+    });
+
+    const myEvos = await findMyEvos(evoChainData.chain, speciesData, pokemonData, true);
+
+    // If single evolution branch, append clickable "?" preview
+    if (myEvos.length === 1) {
+        const nextEvo = myEvos[0];
+        html += `<span class="sep">→</span><a class="evo-preview" onclick="navigateTo('${nextEvo.species.name}')">?</a>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible) {
+    return `
+                <div class="result-card" id="result-card" ${isVisible ? `` : `style="display:none"`}>
                     <div class="pokemon-header">
                         <img class="pokemon-sprite" src="${pSprite}" alt="${pName}">
                         <div class="pokemon-info">
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id">#${String(pId).padStart(3, '0')}</div>
                             <div class="type-badges">
-                                ${pTypes.map(t => `<span class="type-badge" style="background:${TYPE_COLORS[t] || '#888'}">${t}</span>`).join('')}
+                                ${pTypes.map(t => `<span class="type-badge" style="background:${TYPE_COLORS[t.toLowerCase()] || '#888'}">${t}</span>`).join('')}
                             </div>
                         </div>
                     </div>
@@ -418,34 +495,48 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
                     </div>
                 </div>
             `;
+} 
 
-    resultsDiv.innerHTML = html;
-}
+async function findMyEvos(chainNode, speciesData, pokemonData) {
+    function traverse(currentChain, isBaseForm) {
+        if (currentChain.species.name === speciesData.name) {
+            const copyChain = structuredClone(currentChain);
+            copyChain.evolves_to = copyChain.evolves_to.filter(evolvesTo => {
+                evolvesTo.evolution_details = evolvesTo.evolution_details.filter((detail) => {
+                    const base_form = detail.base_form;
+                    return ((base_form === null || base_form === undefined) && isBaseForm)
+                        || (base_form?.name === pokemonData.name);
+                });
 
-function findEvolutionInChain(chainNode, targetName) {
-    function traverse(node, currentPath) {
-        currentPath = [...currentPath, { name: node.species.name }];
-        if (node.species.name === targetName) {
-            return { path: currentPath, details: node.evolution_details, evolvesTo: node.evolves_to };
+                return evolvesTo.evolution_details.length > 0;
+            });
+
+            return copyChain.evolves_to;
+        } else {
+            for (const nextChain of currentChain.evolves_to) {
+                const res = traverse(nextChain, isBaseForm);
+                if (res) {
+                    return res;
+                }
+            }
+
+            return null;
         }
-        for (const child of node.evolves_to) {
-            const result = traverse(child, currentPath);
-            if (result) return result;
-        }
-        return null;
     }
-
-    return traverse(chainNode, []);
+    const mainForm = await cachedFetch(pokemonData.forms[0].url, stripForm);
+    const isBaseForm = mainForm.form_name === '';
+    const res = traverse(chainNode, isBaseForm);
+    return res;
 }
 
-async function renderEvolutions(evoInfo) {
-    if (!evoInfo || evoInfo.evolvesTo.length === 0) {
+async function renderEvolutions(evoInfo, pName) {
+    if (!evoInfo || evoInfo.length === 0) {
         return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
     }
 
     let html = '';
 
-    for (const [idx, evoTarget] of evoInfo.evolvesTo.entries()) {
+    for (const [idx, evoTarget] of evoInfo.entries()) {
         const targetName = evoTarget.species.name;
 
         // Group details into distinct method boxes
@@ -456,21 +547,23 @@ async function renderEvolutions(evoInfo) {
         const spoilerBoxes = (
             await Promise.all(
                 methodGroups.map((group, boxIdx) =>
-                    renderMethodBox(group, boxIdx, idx)
+                    renderMethodBox(targetName, group, boxIdx, idx, pName)
                 )
             )
         ).join('');
+
+        const evoId = idx + pName + targetName;
 
         html += `
             <div class="evo-branch">
                 <div class="evo-row">
                     <div class="evo-card">
-                        <div class="evo-name-row" id="evoNameRow-${idx}">
-                            <span class="evo-hidden-text" id="evoHiddenText-${idx}"></span>
-                            <span style="display:none;" id="evoTargetSpan-${idx}">
+                        <div class="evo-name-row" id="evoNameRow-${evoId}">
+                            <span class="evo-hidden-text" id="evoHiddenText-${evoId}"></span>
+                            <span style="display:none;" id="evoTargetSpan-${evoId}">
                                 <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
                             </span>
-                            <button class="btn-reveal-evo" onclick="toggleEvoReveal(${idx}, '${targetName}')" id="evoToggleBtn-${idx}">
+                            <button class="btn-reveal-evo" onclick="toggleEvoReveal('${evoId}', '${targetName}')" id="evoToggleBtn-${evoId}">
                                 Show Evolution
                             </button>
                         </div>
@@ -480,7 +573,7 @@ async function renderEvolutions(evoInfo) {
                     </div>
                 </div>
             </div>
-            ${idx < evoInfo.evolvesTo.length - 1 ? '<div class="evo-divider"></div>' : ''}
+            ${idx < evoInfo.length - 1 ? '<div class="evo-divider"></div>' : ''}
         `;
     }
     return html;
@@ -510,11 +603,13 @@ function groupEvolutionMethods(details) {
     return Array.from(groups.values());
 }
 
-async function renderMethodBox(methodGroup, boxIdx, parentIdx) {
+async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, pName) {
     const methodSummary = await getMethodSummary([methodGroup]);
     const methodDetails = await getMethodDetails(methodGroup);
-    const spoilerId = `spoiler-${parentIdx}-${boxIdx}`;
-    const btnId = `triggerRevealBtn-${parentIdx}-${boxIdx}`;
+
+    const id = `${pName}-${targetEvolution}-${parentIdx}-${boxIdx}`;
+    const spoilerId = `spoiler-${id}`;
+    const btnId = `triggerRevealBtn-${id}`;
 
     return `
         <div class="spoiler-box">
@@ -651,7 +746,7 @@ async function getMethodDetails(details) {
 
         switch (key) {
             case 'base_form':
-                lines.push(`<strong>Base Form:</strong> ${value}`);
+                // lines.push(`<strong>Base Form:</strong> ${value}`);
                 break;
             case 'gender':
                 const gender = await cachedFetch(API_GENDER + value);
