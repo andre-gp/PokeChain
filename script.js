@@ -820,7 +820,8 @@ async function getMethodDetails(details) {
                 lines.push('<strong>Needs overworld rain</strong>');
                 break;
             case 'party_species':
-                lines.push(`Must have a <strong>${getCurrentLanguageName(await cachedFetch(value.url, stripSpecies))}</strong> in the party`);
+                const pokemonName = getCurrentLanguageName(await cachedFetch(value.url, stripSpecies));
+                lines.push(`Must have a <strong><a href="/#${pokemonName}">${pokemonName}</a></strong> in the party`);
                 break;
             case 'party_type':
                 lines.push(`<strong>Must have a Pokémon of type ${await cachedFetchNameInCurrentLanguage(value.url)} in the party</strong> `);
@@ -838,7 +839,8 @@ async function getMethodDetails(details) {
                 lines.push(`<strong>Time of day:</strong> ${value}`);
                 break;
             case 'trade_species':
-                lines.push(`Must be traded with another player for a <strong>${getCurrentLanguageName(await cachedFetch(value.url, stripSpecies))}</strong> `);
+                const tradedSpecies = getCurrentLanguageName(await cachedFetch(value.url, stripSpecies));
+                lines.push(`Must be traded with another player for a <strong><a href="/#${tradedSpecies}">${tradedSpecies}</a></strong>`);
                 break;
             case 'trigger':
                 if (value.name === 'trade' && !details.trade_species) {
