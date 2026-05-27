@@ -298,6 +298,11 @@ document.addEventListener('click', (e) => {
         suggestionsDiv.classList.remove('visible');
         activeSuggestionIndex = -1;
     }
+
+    if (e.target.classList.contains('pokemon-link')) {
+        e.preventDefault();
+        searchPokemon(e.target.dataset.name);
+    }
 });
 
 async function searchPokemon(name) {
@@ -820,7 +825,7 @@ async function getMethodDetails(details) {
                 break;
             case 'party_species':
                 const pokemonName = getCurrentLanguageName(await cachedFetch(value.url, stripSpecies));
-                lines.push(`Must have a <strong><a href="/#${pokemonName}">${pokemonName}</a></strong> in the party`);
+                lines.push(`Must have a <strong><a href="#" class="pokemon-link" data-name="${pokemonName}">${pokemonName}</a></strong> in the party`);
                 break;
             case 'party_type':
                 lines.push(`<strong>Must have a Pokémon of type ${await cachedFetchNameInCurrentLanguage(value.url)} in the party</strong> `);
@@ -839,7 +844,7 @@ async function getMethodDetails(details) {
                 break;
             case 'trade_species':
                 const tradedSpecies = getCurrentLanguageName(await cachedFetch(value.url, stripSpecies));
-                lines.push(`Must be traded with another player for a <strong><a href="/#${tradedSpecies}">${tradedSpecies}</a></strong>`);
+                lines.push(`Must be traded with another player for a <strong><a href="#" class="pokemon-link" data-name="${tradedSpecies}">${tradedSpecies}</a></strong>`);
                 break;
             case 'trigger':
                 if (value.name === 'trade' && !details.trade_species) {
