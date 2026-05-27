@@ -152,6 +152,24 @@ function stripEvolutionTrigger(data) {
     }
 }
 
+function stripLocation(data) {
+    return {
+        id: data.id,
+        name: data.name,
+        names: data.names,
+        region: data.region
+    }
+}
+
+function stripRegion(data) {
+    return {
+        id: data.id,
+        name: data.name,
+        names: data.names,
+        main_generation: data.main_generation
+    }
+}
+
 function stripToOnlyNames(data) {
     return {
         id: data.id,
@@ -811,7 +829,12 @@ async function getMethodDetails(details) {
                 lines.push(`<strong>Must know a move of type:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
                 break;
             case 'location':
-                lines.push(`<strong>Location:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
+                const location = await cachedFetch(value.url, stripLocation);
+                const locationName = getCurrentLanguageName(location);
+                const regionLoc = await cachedFetch(location.region.url, stripRegion)
+                const regionNameLoc = getCurrentLanguageName(regionLoc);
+                const mainGenerationNameLoc = await cachedFetchNameInCurrentLanguage(regionLoc.main_generation.url);
+                lines.push(`<strong>Location:</strong> ${locationName} (${regionNameLoc} - ${mainGenerationNameLoc})`);
                 break;
             case 'min_affection':
                 lines.push(`<strong>Affection:</strong> ${value} or higher`);
@@ -848,8 +871,10 @@ async function getMethodDetails(details) {
                 lines.push(`<strong>Must have a Pokémon of type ${await cachedFetchNameInCurrentLanguage(value.url)} in the party</strong> `);
                 break;
             case 'region':
-                const regionName = getCurrentLanguageName(await cachedFetch(value.url, stripToOnlyNames));
-                lines.push(`<strong>Region:</strong> ${regionName}`);
+                const region = await cachedFetch(value.url, stripRegion)
+                const regionName = getCurrentLanguageName(region);
+                const mainGenerationName = await cachedFetchNameInCurrentLanguage(region.main_generation.url);
+                lines.push(`<strong>Region:</strong> ${regionName} (${mainGenerationName})`);
                 break;
             case 'relative_physical_stats':
                 if (value > 0) lines.push('<strong>Attack &gt; Defense</strong>');
