@@ -12,7 +12,7 @@ const API_GENDER = 'https://pokeapi.co/api/v2/gender/'
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
-    prefix: 'pokeapi_cache_v2.2_',
+    prefix: 'pokeapi_cache_v2.3_',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
     get(url) {
         try {
