@@ -849,6 +849,9 @@ async function getMethodDetails(details) {
             case 'trigger':
                 if (value.name === 'trade' && !details.trade_species) {
                     lines.push('<strong>Trade with another player</strong>');
+                } else if (value.name === 'shed') {
+                    lines.push(`<strong>Level:</strong> 20`);
+                    lines.push('<strong>Player must have an empty slot in their party and an extra Poké Ball on hand.</strong>');
                 }
                 break;
             case 'turn_upside_down':
