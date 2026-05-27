@@ -589,7 +589,7 @@ async function findMyEvos(chainNode, speciesData, pokemonData) {
         }
     }
     const mainForm = await cachedFetch(pokemonData.forms[0].url, stripForm);
-    const isBaseForm = (mainForm.form_name === '') || (speciesData.varieties.length <= 1);
+    const isBaseForm = (mainForm.form_name === '') || (speciesData.varieties.length <= 1) || (speciesData.name == pokemonData.name);
     const res = traverse(chainNode, isBaseForm);
     return res;
 }
