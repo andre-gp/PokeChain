@@ -849,6 +849,9 @@ async function getMethodDetails(details) {
             case 'turn_upside_down':
                 lines.push(`<strong>Turn device upside down</strong>`);
                 break;
+            case 'used_move':
+                lines.push(`<strong>Move:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
+                break;
             default:
                 if (value?.name) {
                     lines.push(`${key.replace('-', ' ')} : ${value.name}`)
