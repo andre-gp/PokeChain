@@ -21,7 +21,8 @@
 
         <div class="search-wrapper">
             <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input type="text" class="search-input" id="searchInput" placeholder="Search a Pokémon..." autocomplete="off" spellcheck="false">
             <div class="search-spinner" id="searchSpinner"><div class="spinner"></div></div>
@@ -35,9 +36,18 @@
                 <span>Enable autocomplete</span>
             </label>
         </div>
-        
+
         <div class="error-msg" id="errorMsg"></div>
         <div id="results"></div>
+    </div>
+
+    <!-- Type Details Modal -->
+    <div id="typeModal" class="type-modal">
+        <div class="type-modal-content">
+            <span class="type-modal-close" onclick="closeTypeModal()">&times;</span>
+            <h2 id="typeModalTitle">Type Details</h2>
+            <div id="typeModalBody"></div>
+        </div>
     </div>
 
     <script src="script.js"></script>

@@ -169,6 +169,14 @@ function stripRegion(data) {
         main_generation: data.main_generation
     }
 }
+function stripType(data) {
+    return {
+        id: data.id,
+        name: data.name,
+        names: data.names,
+        damage_relations: data.damage_relations
+    }
+}
 
 function stripToOnlyNames(data) {
     return {
@@ -413,7 +421,6 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
     const pName = getCurrentLanguageName(speciesData);
     const pId = pokemonData.id;
     const pSprite = pokemonData.sprite;
-    const pTypes = await Promise.all(pokemonData.types.map(slot => cachedFetchNameInCurrentLanguage(slot.type.url)));
     let html = '';
 
     if (evoChainData) {
@@ -464,7 +471,10 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
             const pName = pkmnData.name;
             const pId = pkmnData.id;
             const pSprite = pkmnData.sprite;
-            const pTypes = await Promise.all(pkmnData.types.map(slot => cachedFetchNameInCurrentLanguage(slot.type.url)));
+            const pTypes = await Promise.all(pkmnData.types.map(async slot => ({
+                name: await cachedFetchNameInCurrentLanguage(slot.type.url),
+                slug: slot.type.name
+            })));
 
             const myEvos = await findMyEvos(evoChainData.chain, speciesData, pkmnData);        
 
@@ -549,9 +559,9 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible) {
                         <div class="pokemon-info">
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id">#${String(pId).padStart(3, '0')}</div>
-                            <div class="type-badges">
-                                ${pTypes.map(t => `<span class="type-badge" style="background:${TYPE_COLORS[t.toLowerCase()] || '#888'}">${t}</span>`).join('')}
-                            </div>
+                                <div class="type-badges">
+                                    ${pTypes.map(t => `<button class="type-badge" style="background:${TYPE_COLORS[t.slug] || '#888'}" onclick="showTypeDetails('${t.slug}')">${t.name}</button>`).join('')}
+                                </div>
                         </div>
                     </div>
                     <div class="divider"></div>
@@ -923,6 +933,110 @@ function toggleSpoiler(idx) {
     const btnReveal = document.getElementById(`triggerRevealBtn-${idx}`);
     btnReveal.style.display = 'none';
 }
+
+async function showTypeDetails(typeName) {
+    const modal = document.getElementById('typeModal');
+    const title = document.getElementById('typeModalTitle');
+    const body = document.getElementById('typeModalBody');
+
+    title.innerHTML = `<span class="type-badge" style="background:${TYPE_COLORS[typeName] || '#888'}">${typeName}</span>`;
+    body.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
+    modal.style.display = 'block';
+
+    try {
+        // Fetch type data using the English slug
+        const typeData = await cachedFetch(`https://pokeapi.co/api/v2/type/${typeName}/`, stripType);
+        const relations = typeData.damage_relations;
+
+        const renderTypes = async (typesArray) => {
+            // Return null if the array is empty so we can hide the section entirely
+            if (!typesArray || typesArray.length === 0) return null;
+
+            const badges = await Promise.all(typesArray.map(async t => {
+                const localizedName = await cachedFetchNameInCurrentLanguage(t.url);
+                return `<span class="type-relation-badge" style="background:${TYPE_COLORS[t.name] || '#888'}">${localizedName}</span>`;
+            }));
+            return badges.join('');
+        };
+
+        // Fetch all relations in parallel
+        const [
+            doubleFrom, doubleTo,
+            halfFrom, halfTo,
+            noFrom, noTo
+        ] = await Promise.all([
+            renderTypes(relations.double_damage_from),
+            renderTypes(relations.double_damage_to),
+            renderTypes(relations.half_damage_from),
+            renderTypes(relations.half_damage_to),
+            renderTypes(relations.no_damage_from),
+            renderTypes(relations.no_damage_to)
+        ]);
+
+        // Build a section only if it has content, and apply good/bad styling
+        const buildSection = (title, htmlContent, type) => {
+            if (!htmlContent) return '';
+
+            // Assign CSS class based on whether it's a good or bad matchup
+            const typeClass = 'relation-' + type;
+
+            return `
+                <div class="type-relation-group ${typeClass}">
+                    <h4>${title}</h4>
+                    <div class="type-relation-badges">${htmlContent}</div>
+                </div>
+            `;
+        };
+
+
+        const attackerHtml =
+            buildSection('Super Effective (2x)', doubleTo, 'good') +
+            buildSection('Not Very Effective (0.5x)', halfTo, 'bad') +
+            buildSection('No Effect (0x)', noTo, 'none');
+
+        const defenderHtml =
+            buildSection('Weak To (2x)', doubleFrom, 'good') +
+            buildSection('Resists (0.5x)', halfFrom, 'bad') +
+            buildSection('Immune (0x)', noFrom, 'none');
+
+        body.innerHTML = `
+            <div class="type-modal-body-wrapper">
+                <div class="type-column">
+                    <h3 class="column-title">Attacker</h3>
+                    ${attackerHtml || '<p style="color:var(--text-secondary); font-style:italic; font-size: 0.85rem;">Neutral to all types.</p>'}
+                </div>
+                <div class="type-column">
+                    <h3 class="column-title">Defender</h3>
+                    ${defenderHtml || '<p style="color:var(--text-secondary); font-style:italic; font-size: 0.85rem;">Neutral to all types.</p>'}
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        body.innerHTML = '<p style="color:var(--danger); text-align:center; padding: 20px;">Failed to load type details.</p>';
+        console.error(e);
+    }
+}
+function closeTypeModal() {
+    document.getElementById('typeModal').style.display = 'none';
+}
+
+// Close modal when clicking outside of the content box
+window.addEventListener('click', function (event) {
+    const modal = document.getElementById('typeModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+});
+
+// Close modal when pressing the Escape key
+window.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+        const modal = document.getElementById('typeModal');
+        if (modal && modal.style.display === 'block') {
+            modal.style.display = 'none';
+        }
+    }
+});
 
 
 function getLocalStorageSize() {
