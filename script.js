@@ -214,7 +214,7 @@ function stripMove(data) {
         power: data.power,
         pp: data.pp,
         priority: data.priority,
-        start_changes: data.stat_changes,
+        stat_changes: data.stat_changes,
         target: data.target,
         type: data.type,
     };
