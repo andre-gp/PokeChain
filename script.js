@@ -503,31 +503,45 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         html += '</div>';
     }
 
-    let results = await Promise.all(
+    const results = (await Promise.all(
         speciesData.varieties.map(async (variety, idx) => {
 
+            // Start fetching Pokémon immediately
             const pkmnData = await cachedFetch(variety.pokemon.url, stripPokemon);
-            const mainForm = await cachedFetch(pkmnData.forms[0].url, stripForm);
+
+            // Start these simultaneously
+            const mainFormPromise = cachedFetch(pkmnData.forms[0].url, stripForm);
+
+            const pTypesPromise = Promise.all(
+                pkmnData.types.map(async slot => ({
+                    name: await cachedFetchNameInCurrentLanguage(slot.type.url),
+                    slug: slot.type.name
+                }))
+            );
+
+            const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
+
+            // Wait for all three together
+            const [mainForm, pTypes, myEvos] = await Promise.all([
+                mainFormPromise,
+                pTypesPromise,
+                myEvosPromise
+            ]);
 
             if (mainForm.is_mega || mainForm.form_name === 'gmax' || mainForm.form_name === 'starter') {
                 return '';
             }
 
-            const pName = pkmnData.name;
-            const pId = pkmnData.id;
-            const pSprite = pkmnData.sprite;
-            const pTypes = await Promise.all(pkmnData.types.map(async slot => ({
-                name: await cachedFetchNameInCurrentLanguage(slot.type.url),
-                slug: slot.type.name
-            })));
-
-            const myEvos = await findMyEvos(evoChainData.chain, speciesData, pkmnData);
-
-            return await renderMainCard(pName, pId, pSprite, pTypes, myEvos, idx < 1);
+            return renderMainCard(
+                pkmnData.name,
+                pkmnData.id,
+                pkmnData.sprite,
+                pTypes,
+                myEvos,
+                idx < 1
+            );
         })
-    );
-
-    results = results.filter(res => res !== "")
+    )).filter(res => res !== "");
 
     results.forEach((res, idx) => {
         html += res;
