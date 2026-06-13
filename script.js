@@ -6,6 +6,7 @@
     steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
 };
 
+const DEBUG = false;
 const CURRENT_LANGUAGE = 'en';
 
 const API_GENDER = 'https://pokeapi.co/api/v2/gender/'
@@ -90,7 +91,9 @@ async function cachedFetch(url, stripFn) {
     const cached = PokeCache.get(url);
 
     if (cached) {
-        console.log("Successfully retrieved cached object for " + url + " - " + getJsonSize(cached) + " KB");
+        if (DEBUG) {
+            console.log("Successfully retrieved cached object for " + url + " - " + getJsonSize(cached) + " KB");
+        }
         return cached;
     }
 
@@ -1192,6 +1195,8 @@ function getJsonSize(json) {
     console.log(bytes + " bytes");
 }
 
-const bytes = getLocalStorageSize();
+if (DEBUG) {
+    const bytes = getLocalStorageSize();
 
-console.log(`Approx size: ${(bytes / 1024).toFixed(2)} KB`);
+    console.log(`Approx size: ${(bytes / 1024).toFixed(2)} KB`);
+}
