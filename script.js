@@ -739,18 +739,29 @@ function groupEvolutionMethods(details) {
 
 async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, pName) {
     const methodSummary = await getMethodSummary([methodGroup]);
-    const methodDetails = await getMethodDetails(methodGroup);
 
     const id = `${pName}-${targetEvolution}-${parentIdx}-${boxIdx}`;
     const spoilerId = `spoiler-${id}`;
     const btnId = `triggerRevealBtn-${id}`;
 
+
+    const filteredMethodGroup = Object.fromEntries(
+        Object.entries(methodGroup).filter(([_, value]) =>
+            value !== null &&
+            value !== undefined &&
+            !(typeof value === 'boolean' && value === false) &&
+            value !== ''
+        )
+    );
+
+    const encodedMethodGroup = encodeURIComponent(JSON.stringify(filteredMethodGroup));
+
     return `
         <div class="spoiler-box">
             <span class="method-title">Method: ${methodSummary}</span>
-            <div class="spoiler-details" id="${spoilerId}">
-                ${methodDetails}
-            </div>
+
+            <div class="spoiler-details" id="${spoilerId}" data-method-group="${encodedMethodGroup}" hidden></div>
+
             <button class="btn-reveal" onclick="toggleMethodSpoiler('${spoilerId}', '${btnId}')" id="${btnId}">
                 Reveal
             </button>
@@ -758,11 +769,26 @@ async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, 
     `;
 }
 
-function toggleMethodSpoiler(spoilerId, btnId) {
+async function toggleMethodSpoiler(spoilerId, btnId) {
     const spoiler = document.getElementById(spoilerId);
     const btn = document.getElementById(btnId);
     spoiler.classList.toggle('visible');
     btn.style.display = 'none';
+
+ 
+    spoiler.dataset.loading = 'true';
+    spoiler.innerHTML = 'Loading...';
+
+    try {
+        const methodGroup = JSON.parse(decodeURIComponent(spoiler.dataset.methodGroup));
+        spoiler.innerHTML = await getMethodDetails(methodGroup);
+        spoiler.dataset.loaded = 'true';
+    } catch (err) {
+        console.error(err);
+        spoiler.innerHTML = 'Failed to load method details.';
+    } finally {
+        delete spoiler.dataset.loading;
+    }
 }
 
 function updateBreadcrumbPreview(currentName, nextName, isRevealed) {
@@ -873,10 +899,6 @@ async function getMethodDetails(details) {
     const lines = [];
 
     for (const [key, value] of Object.entries(details)) {
-        if (value === null || value === undefined || (typeof value === 'boolean' && value === false) || value === '') {
-            continue;
-        }
-
         switch (key) {
             case 'base_form':
                 // lines.push(`<strong>Base Form:</strong> ${value}`);
