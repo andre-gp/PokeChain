@@ -83,6 +83,7 @@ const PokeCache = {
         Object.keys(localStorage).filter(k => k.startsWith(this.prefix)).forEach(k => localStorage.removeItem(k));
     }
 };
+const inFlightFetches = new Map();
 
 // Cached fetch wrapper
 async function cachedFetch(url, stripFn) {
@@ -91,19 +92,26 @@ async function cachedFetch(url, stripFn) {
     if (cached) {
         console.log("Successfully retrieved cached object for " + url + " - " + getJsonSize(cached) + " KB");
         return cached;
-    } else {
-        const res = await fetch(url);
+    }
 
-        if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-        }
+    if (inFlightFetches.has(url)) {
+        return inFlightFetches.get(url);
+    }
+
+    const promise = (async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
         const toCache = stripFn ? stripFn(data) : data;
         PokeCache.set(url, toCache);
-        console.log("Found no cache for " + url + " - Sucessfully updated the cache data for it. - " + getJsonSize(toCache) + " KB");
         return toCache;
-    }
+    })().finally(() => {
+        inFlightFetches.delete(url);
+    });
+
+    inFlightFetches.set(url, promise);
+    return promise;
 }
 
 async function cachedFetchNameInCurrentLanguage(url) {
