@@ -110,6 +110,11 @@ async function cachedFetchNameInCurrentLanguage(url) {
     return getCurrentLanguageName(await cachedFetch(url, stripToOnlyNames))
 }
 
+function stripArrayToCurrentLanguageEntry(data) {
+    if (!Array.isArray(data)) return null;
+    return [data.findLast(entry => entry?.language?.name === CURRENT_LANGUAGE) ?? data[0] ?? null];
+}
+
 // Strip functions to minimize localStorage footprint
 const stripPokemonList = (data) => data.results.map(r => ({ name: r.name, url: r.url }));
 
@@ -186,6 +191,27 @@ function stripToOnlyNames(data) {
     }
 }
 
+function stripMove(data) {
+    return {
+        accuracy: data.accuracy,
+        damage_class: data.damage_class,
+        effect_chance: data.effect_chance,
+        effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries),
+        flavor_text_entries: stripArrayToCurrentLanguageEntry(data.flavor_text_entries),
+        generation: data.generation,
+        id: data.id,
+        meta: data.meta,
+        name: data.name,
+        names: stripArrayToCurrentLanguageEntry(data.names),
+        power: data.power,
+        pp: data.pp,
+        priority: data.priority,
+        start_changes: data.stat_changes,
+        target: data.target,
+        type: data.type,
+    };
+}
+
 let allPokemonNames = [];
 let searchTimeout = null;
 let activeSuggestionIndex = -1;
@@ -210,7 +236,7 @@ autocompleteToggle.addEventListener('change', () => {
 
 // Routing Helper (Hash-based for static servers)
 function navigateTo(name) {
-    const cleanName = name ? name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
+    const cleanName = name ? name.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-') : '';
 
     window.location.hash = cleanName;
 }
@@ -220,7 +246,7 @@ function handleRoute() {
     const hash = window.location.hash.replace('#', '');
     if (hash) {
         searchInput.value = hash;
-        searchPokemon(hash);
+        search(hash);
     } else {
         clearResults();
     }
@@ -256,8 +282,6 @@ async function loadPokemonList() {
 }
 
 loadPokemonList();
-
-//PokeCache.clear();
 
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
@@ -344,16 +368,20 @@ document.addEventListener('click', (e) => {
 
     if (e.target.classList.contains('pokemon-link')) {
         e.preventDefault();
-        searchPokemon(e.target.dataset.name);
+        search(e.target.dataset.name);
     }
 });
 
-async function searchPokemon(name) {
-    const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    if (!cleanName) return;
+async function search(query) {
+    const cleanQuery = query
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')      // Replace spaces with dashes
+        .replace(/[^a-z0-9-]/g, ''); // Remove everything except letters, numbers, and dashes
+    if (!cleanQuery) return;
 
-    if (searchInput.value !== cleanName) {
-        searchInput.value = cleanName;
+    if (searchInput.value !== cleanQuery) {
+        searchInput.value = cleanQuery;
     }
 
     suggestionsDiv.classList.remove('visible');
@@ -363,9 +391,9 @@ async function searchPokemon(name) {
     searchSpinner.classList.add('active');
 
     try {
-        // Primary flow: form name -> pokemon -> species via URL
+        // 1. Try Pokemon
         let pokemonData = await cachedFetch(
-            `https://pokeapi.co/api/v2/pokemon/${cleanName}`,
+            `https://pokeapi.co/api/v2/pokemon/${cleanQuery}`,
             stripPokemon
         );
 
@@ -381,29 +409,34 @@ async function searchPokemon(name) {
         await renderResults(speciesData, pokemonData, evoChainData);
 
     } catch (err) {
-        // If pokemon fetch failed, try species endpoint (for base species names)
         if (err.message.includes('404') || err.message.includes('400')) {
             try {
-                // Fetch species to find default form
+                // 2. Try Species
                 const speciesData = await cachedFetch(
-                    `https://pokeapi.co/api/v2/pokemon-species/${cleanName}`,
+                    `https://pokeapi.co/api/v2/pokemon-species/${cleanQuery}`,
                     stripSpecies
                 );
 
-                // Find and redirect to default form
                 const defaultVariety = speciesData.varieties.find(v => v.is_default);
                 if (defaultVariety) {
-                    console.log(`[Redirect] "${cleanName}" → "${defaultVariety.pokemon.name}"`);
-                    navigateTo(defaultVariety.pokemon.name);  // Triggers new search with form name
-                    return;  // Exit early to avoid showing error
+                    console.log(`[Redirect] "${cleanQuery}" → "${defaultVariety.pokemon.name}"`);
+                    navigateTo(defaultVariety.pokemon.name);
+                    return;
                 }
 
-                // No default form found
-                showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
+                showError(`Pokémon "${cleanQuery}" not found. Please check the spelling.`);
 
             } catch (speciesErr) {
-                // Species also doesn't exist
-                showError(`Pokémon "${cleanName}" not found. Please check the spelling.`);
+                // 3. Try Move
+                try {
+                    const moveData = await cachedFetch(
+                        `https://pokeapi.co/api/v2/move/${cleanQuery}`,
+                        stripMove
+                    );
+                    await renderMoveResults(moveData);
+                } catch (moveErr) {
+                    showError(`"${cleanQuery}" not found as a Pokémon or Move. Please check the spelling.`);
+                }
             }
         } else {
             showError('An error occurred. Please try again.');
@@ -412,6 +445,7 @@ async function searchPokemon(name) {
         searchSpinner.classList.remove('active');
     }
 }
+
 function showError(msg) {
     errorMsg.textContent = msg;
     errorMsg.classList.add('visible');
@@ -476,7 +510,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
                 slug: slot.type.name
             })));
 
-            const myEvos = await findMyEvos(evoChainData.chain, speciesData, pkmnData);        
+            const myEvos = await findMyEvos(evoChainData.chain, speciesData, pkmnData);
 
             return await renderMainCard(pName, pId, pSprite, pTypes, myEvos, idx < 1);
         })
@@ -498,14 +532,14 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
             </div>
         `;
     }
-    
+
 
     resultsDiv.innerHTML = html;
 }
 
 function showAlternativeForms() {
     const alternativeForms = document.getElementsByClassName(`result-card`);
-    
+
     for (const element of alternativeForms) {
         element.removeAttribute("style");
     }
@@ -570,7 +604,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible) {
                     </div>
                 </div>
             `;
-} 
+}
 
 async function findMyEvos(chainNode, speciesData, pokemonData) {
     function traverse(currentChain, isBaseForm) {
@@ -722,7 +756,7 @@ function toggleEvoReveal(idx, targetName) {
     if (!targetSpan.classList.contains('revealed')) {
         // Reveal
         hiddenText.style.display = 'none';
-        targetSpan.classList.add('revealed'); 
+        targetSpan.classList.add('revealed');
         toggleBtn.innerHTML = '🙈';
         toggleBtn.style.display = 'none';
     } else {
@@ -1038,6 +1072,58 @@ window.addEventListener('keydown', function (event) {
     }
 });
 
+async function renderMoveResults(moveData) {
+    const moveName = getCurrentLanguageName(moveData);
+    const typeName = await cachedFetchNameInCurrentLanguage(moveData.type.url);
+    const typeSlug = moveData.type.name;
+    const damageClassName = await cachedFetchNameInCurrentLanguage(moveData.damage_class.url);
+    const damageClassSlug = moveData.damage_class.name;
+
+    const effect = moveData.effect_entries[0] ? moveData.effect_entries[0].effect : 'No effect description available.';
+
+    const flavorText = moveData.flavor_text_entries[0].flavor_text;
+
+    const html = `
+        <div class="result-card move-card">
+            <div class="move-header">
+                <div class="move-info">
+                    <div class="move-name">${moveName}</div>
+                    <div class="move-meta">
+                        <button class="type-badge" style="background:${TYPE_COLORS[typeSlug] || '#888'}" onclick="showTypeDetails('${typeSlug}')">${typeName}</button>
+                        <span class="damage-class-badge ${damageClassSlug}">${damageClassName}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="move-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Power</span>
+                    <span class="stat-value">${moveData.power !== null ? moveData.power : '—'}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Accuracy</span>
+                    <span class="stat-value">${moveData.accuracy !== null ? moveData.accuracy + '%' : '—'}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">PP</span>
+                    <span class="stat-value">${moveData.pp}</span>
+                </div>
+            </div>
+            <div class="move-section">
+                <h4>Effect</h4>
+                <p class="move-effect">${effect}</p>
+            </div>
+            ${flavorText ? `
+            <div class="move-section">
+                <h4>Description</h4>
+                <p class="move-flavor">${flavorText}</p>
+            </div>
+            ` : ''}
+        </div>
+    `;
+
+    resultsDiv.innerHTML = html;
+}
 
 function getLocalStorageSize() {
     let total = 0;
