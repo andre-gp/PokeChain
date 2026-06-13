@@ -391,56 +391,59 @@ async function search(query) {
     searchSpinner.classList.add('active');
 
     try {
-        // 1. Try Pokemon
-        let pokemonData = await cachedFetch(
-            `https://pokeapi.co/api/v2/pokemon/${cleanQuery}`,
-            stripPokemon
-        );
+        const pokemonUrl = `https://pokeapi.co/api/v2/pokemon/${cleanQuery}`;
+        const speciesUrl = `https://pokeapi.co/api/v2/pokemon-species/${cleanQuery}`;
+        const moveUrl = `https://pokeapi.co/api/v2/move/${cleanQuery}`;
 
-        let speciesData = await cachedFetch(
-            pokemonData.species.url,
-            stripSpecies
-        );
+        const [pokemonResult, speciesResult, moveResult] = await Promise.allSettled([
+            cachedFetch(pokemonUrl, stripPokemon),
+            cachedFetch(speciesUrl, stripSpecies),
+            cachedFetch(moveUrl, stripMove)
+        ]);
 
-        const evoChainData = await cachedFetch(
-            speciesData.evolution_chain.url
-        );
+        // 1) Prefer Pokémon if it exists
+        if (pokemonResult.status === "fulfilled") {
+            const pokemonData = pokemonResult.value;
 
-        await renderResults(speciesData, pokemonData, evoChainData);
+            const speciesData = await cachedFetch(
+                pokemonData.species.url,
+                stripSpecies
+            );
 
-    } catch (err) {
-        if (err.message.includes('404') || err.message.includes('400')) {
-            try {
-                // 2. Try Species
-                const speciesData = await cachedFetch(
-                    `https://pokeapi.co/api/v2/pokemon-species/${cleanQuery}`,
-                    stripSpecies
-                );
+            const evoChainData = await cachedFetch(
+                speciesData.evolution_chain.url
+            );
 
-                const defaultVariety = speciesData.varieties.find(v => v.is_default);
-                if (defaultVariety) {
-                    console.log(`[Redirect] "${cleanQuery}" → "${defaultVariety.pokemon.name}"`);
-                    navigateTo(defaultVariety.pokemon.name);
-                    return;
-                }
-
-                showError(`Pokémon "${cleanQuery}" not found. Please check the spelling.`);
-
-            } catch (speciesErr) {
-                // 3. Try Move
-                try {
-                    const moveData = await cachedFetch(
-                        `https://pokeapi.co/api/v2/move/${cleanQuery}`,
-                        stripMove
-                    );
-                    await renderMoveResults(moveData);
-                } catch (moveErr) {
-                    showError(`"${cleanQuery}" not found as a Pokémon or Move. Please check the spelling.`);
-                }
-            }
-        } else {
-            showError('An error occurred. Please try again.');
+            await renderResults(speciesData, pokemonData, evoChainData);
+            return;
         }
+
+        // 2) If it's a species, redirect to the default Pokémon form
+        if (speciesResult.status === "fulfilled") {
+            const speciesData = speciesResult.value;
+            const defaultVariety = speciesData.varieties.find(v => v.is_default);
+
+            if (defaultVariety) {
+                console.log(`[Redirect] "${cleanQuery}" → "${defaultVariety.pokemon.name}"`);
+                navigateTo(defaultVariety.pokemon.name);
+                return;
+            }
+
+            showError(`Pokémon "${cleanQuery}" not found. Please check the spelling.`);
+            return;
+        }
+
+        // 3) If it's a move, render move results
+        if (moveResult.status === "fulfilled") {
+            await renderMoveResults(moveResult.value);
+            return;
+        }
+
+        // Nothing matched
+        showError(`"${cleanQuery}" not found as a Pokémon or Move. Please check the spelling.`);
+    } catch (err) {
+        console.error(err);
+        showError('An error occurred. Please try again.');
     } finally {
         searchSpinner.classList.remove('active');
     }
