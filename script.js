@@ -6,10 +6,13 @@
     steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
 };
 
-const DEBUG = false;
+const DEBUG = true;
 const CURRENT_LANGUAGE = 'en';
 
-const API_GENDER = 'https://pokeapi.co/api/v2/gender/'
+const API_POKEMON = 'https://pokeapi.co/api/v2/pokemon/'
+const API_SPECIES = 'https://pokeapi.co/api/v2/pokemon-species/';
+const API_FORMS = 'https://pokeapi.co/api/v2/pokemon-form/';
+const API_GENDER = 'https://pokeapi.co/api/v2/gender/';
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
@@ -102,16 +105,54 @@ async function cachedFetch(url, stripFn) {
     }
 
     const promise = (async () => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const startTime = DEBUG ? performance.now() : 0;
 
-        const data = await res.json();
-        const toCache = stripFn ? stripFn(data) : data;
-        PokeCache.set(url, toCache);
-        return toCache;
-    })().finally(() => {
-        inFlightFetches.delete(url);
-    });
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const afterFetch = DEBUG ? performance.now() : 0;
+
+            const data = await res.json();
+            const afterJson = DEBUG ? performance.now() : 0;
+
+            const toCache = stripFn ? stripFn(data) : data;
+            PokeCache.set(url, toCache);
+
+            if (DEBUG) {
+                const endTime = performance.now();
+
+                console.groupCollapsed(
+                    `[FETCH] ${url} (${(endTime - startTime).toFixed(1)} ms)`
+                );
+
+                console.log(
+                    `Network: ${(afterFetch - startTime).toFixed(1)} ms`
+                );
+
+                console.log(
+                    `JSON parse: ${(afterJson - afterFetch).toFixed(1)} ms`
+                );
+
+                console.log(
+                    `Processing + cache: ${(endTime - afterJson).toFixed(1)} ms`
+                );
+
+                console.log(
+                    `Total: ${(endTime - startTime).toFixed(1)} ms`
+                );
+
+                console.log("Fetched object:", toCache);
+
+                console.groupEnd();
+            }
+
+            return toCache;
+        }
+        finally {
+            inFlightFetches.delete(url);
+        }
+    })();
 
     inFlightFetches.set(url, promise);
     return promise;
@@ -127,7 +168,7 @@ function stripArrayToCurrentLanguageEntry(data) {
 }
 
 // Strip functions to minimize localStorage footprint
-const stripPokemonList = (data) => data.results.map(r => ({ name: r.name, url: r.url }));
+const stripPokemonList = (data) => data.results.map(r => ({ name: r.name }));
 
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
@@ -406,32 +447,24 @@ async function search(query) {
         const speciesUrl = `https://pokeapi.co/api/v2/pokemon-species/${cleanQuery}`;
         const moveUrl = `https://pokeapi.co/api/v2/move/${cleanQuery}`;
 
-        const [pokemonResult, speciesResult, moveResult] = await Promise.allSettled([
-            cachedFetch(pokemonUrl, stripPokemon),
-            cachedFetch(speciesUrl, stripSpecies),
-            cachedFetch(moveUrl, stripMove)
-        ]);
+        const taggedPromises = [
+            cachedFetch(pokemonUrl, stripPokemon).then(value => ({ type: "pokemon", value })),
+            cachedFetch(speciesUrl, stripSpecies).then(value => ({ type: "species", value })),
+            cachedFetch(moveUrl, stripMove).then(value => ({ type: "move", value }))
+        ];
 
-        // 1) Prefer Pokémon if it exists
-        if (pokemonResult.status === "fulfilled") {
-            const pokemonData = pokemonResult.value;
+        const result = await Promise.any(taggedPromises);
 
-            const speciesData = await cachedFetch(
-                pokemonData.species.url,
-                stripSpecies
-            );
-
-            const evoChainData = await cachedFetch(
-                speciesData.evolution_chain.url
-            );
-
+        if (result.type === "pokemon") {
+            const pokemonData = result.value;
+            const speciesData = await cachedFetch(API_SPECIES + pokemonData.species.name, stripSpecies);
+            const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
             await renderResults(speciesData, pokemonData, evoChainData);
             return;
         }
 
-        // 2) If it's a species, redirect to the default Pokémon form
-        if (speciesResult.status === "fulfilled") {
-            const speciesData = speciesResult.value;
+        if (result.type === "species") {
+            const speciesData = result.value;
             const defaultVariety = speciesData.varieties.find(v => v.is_default);
 
             if (defaultVariety) {
@@ -444,17 +477,13 @@ async function search(query) {
             return;
         }
 
-        // 3) If it's a move, render move results
-        if (moveResult.status === "fulfilled") {
-            await renderMoveResults(moveResult.value);
+        if (result.type === "move") {
+            await renderMoveResults(result.value);
             return;
         }
-
-        // Nothing matched
-        showError(`"${cleanQuery}" not found as a Pokémon or Move. Please check the spelling.`);
     } catch (err) {
         console.error(err);
-        showError('An error occurred. Please try again.');
+        showError(`"${cleanQuery}" not found as a Pokémon, Species, or Move. Please check the spelling.`);
     } finally {
         searchSpinner.classList.remove('active');
     }
@@ -480,7 +509,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
 
         // 1. Find root
         while (currentNode.evolves_from_species) {
-            currentNode = await cachedFetch(currentNode.evolves_from_species.url, stripSpecies);
+            currentNode = await cachedFetch(API_SPECIES + currentNode.evolves_from_species.name, stripSpecies);
             path = [{ name: currentNode.name }, ...path];
         }
 
@@ -510,10 +539,10 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         speciesData.varieties.map(async (variety, idx) => {
 
             // Start fetching Pokémon immediately
-            const pkmnData = await cachedFetch(variety.pokemon.url, stripPokemon);
+            const pkmnData = await cachedFetch(API_POKEMON + variety.pokemon.name, stripPokemon);
 
             // Start these simultaneously
-            const mainFormPromise = cachedFetch(pkmnData.forms[0].url, stripForm);
+            const mainFormPromise = cachedFetch(API_FORMS + pkmnData.forms[0].name, stripForm);
 
             const pTypesPromise = Promise.all(
                 pkmnData.types.map(async slot => ({
@@ -586,7 +615,7 @@ async function renderBreadcrumbs(speciesData) {
 
     // 1. Find root
     while (currentNode.evolves_from_species) {
-        currentNode = await cachedFetch(currentNode.evolves_from_species.url, stripSpecies);
+        currentNode = await cachedFetch(API_SPECIES + currentNode.evolves_from_species.name, stripSpecies);
         path = [{ name: currentNode.name }, ...path];
     }
 
@@ -660,7 +689,7 @@ async function findMyEvos(chainNode, speciesData, pokemonData) {
             return null;
         }
     }
-    const mainForm = await cachedFetch(pokemonData.forms[0].url, stripForm);
+    const mainForm = await cachedFetch(API_FORMS + pokemonData.forms[0].name, stripForm);
     const isBaseForm = (mainForm.form_name === '') || (speciesData.varieties.length <= 1) || (speciesData.name == pokemonData.name);
     const res = traverse(chainNode, isBaseForm);
     return res;
