@@ -12,7 +12,7 @@ const DAMAGE_CLASS_ICONS = {
     status:   'assets/damage-class/status.png'
 };
 
-const DEBUG = true;
+const DEBUG = false;
 const CURRENT_LANGUAGE = 'en';
 
 const HIDDEN_FORM_SUFFIXES = ['-mega', '-gmax', '-starter'];
