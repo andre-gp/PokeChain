@@ -9,6 +9,8 @@
 const DEBUG = true;
 const CURRENT_LANGUAGE = 'en';
 
+const HIDDEN_FORM_SUFFIXES = ['-mega', '-gmax', '-starter'];
+
 const API_POKEMON = 'https://pokeapi.co/api/v2/pokemon/'
 const API_SPECIES = 'https://pokeapi.co/api/v2/pokemon-species/';
 const API_FORMS = 'https://pokeapi.co/api/v2/pokemon-form/';
@@ -507,6 +509,7 @@ function showError(msg) {
 }
 
 async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) {
+    if (HIDDEN_FORM_SUFFIXES.some(suffix => variety.pokemon.name.includes(suffix))) return '';
     const pkmnData = await cachedFetch(API_POKEMON + variety.pokemon.name, stripPokemon);
     const mainFormPromise = cachedFetch(API_FORMS + pkmnData.forms[0].name, stripForm);
     const pTypesPromise = Promise.all(
@@ -517,7 +520,7 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     );
     const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
-    /*if (mainForm.is_mega || mainForm.form_name === 'gmax' || mainForm.form_name === 'starter') return '';*/
+
     return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible);
 }
 
@@ -559,7 +562,11 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
     html += await renderVarietyCard(defaultVariety, speciesData, evoChainData, true);
 
     const otherVarieties = speciesData.varieties.filter(v => !v.is_default);
-    if (otherVarieties.length > 0) {
+    const hasRevealableVarieties = otherVarieties.some(
+        v => !HIDDEN_FORM_SUFFIXES.some(suffix => v.pokemon.name.includes(suffix))
+    );
+
+    if (hasRevealableVarieties) {
         pendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
         html += `
             <div class="reveal-forms-wrapper" id="revealFormsWrapper">
