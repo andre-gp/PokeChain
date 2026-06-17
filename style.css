@@ -1028,28 +1028,50 @@ button.type-relation-badge:active {
     flex-wrap: wrap;
 }
 
-.damage-class-badge {
-    padding: 5px 14px;
-    border-radius: 20px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #fff;
-    border: none;
+.move-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    align-self: flex-start;
 }
 
-    .damage-class-badge.physical {
-        background: var(--fighting);
-    }
+.damage-class-display {
+    position: relative;
+    display: flex;
+    align-items: center;
+    cursor: default;
+}
 
-    .damage-class-badge.special {
-        background: var(--water);
-    }
+.damage-class-display::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    text-transform: capitalize;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 10;
+}
 
-    .damage-class-badge.status {
-        background: var(--grass);
-    }
+.damage-class-display:hover::after {
+    opacity: 1;
+}
+
+.damage-class-icon {
+    height: 22px;
+    width: auto;
+}
+
 
 .priority-badge {
     padding: 6px 14px;
@@ -1058,7 +1080,6 @@ button.type-relation-badge:active {
     font-weight: 700;
     letter-spacing: 0.5px;
     white-space: nowrap;
-    align-self: flex-start;
 }
 
 .priority-positive {

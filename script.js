@@ -6,6 +6,12 @@
     steel: '#b7b7ce', fairy: '#d685ad', unknown: '#787878'
 };
 
+const DAMAGE_CLASS_ICONS = {
+    physical: 'assets/damage-class/physical.png',
+    special:  'assets/damage-class/special.png',
+    status:   'assets/damage-class/status.png'
+};
+
 const DEBUG = true;
 const CURRENT_LANGUAGE = 'en';
 
@@ -1231,10 +1237,14 @@ async function renderMoveResults(moveData) {
                     <div class="move-name">${moveName}</div>
                     <div class="move-meta">
                         <button class="type-badge" style="background:${TYPE_COLORS[typeSlug] || '#888'}" onclick="showTypeDetails('${typeSlug}')">${typeName}</button>
-                        <span class="damage-class-badge ${damageClassSlug}">${damageClassName}</span>
                     </div>
                 </div>
-                ${priorityBadge}
+                <div class="move-header-right">
+                    <div class="damage-class-display" data-tooltip="${damageClassName}">
+                        <img src="${DAMAGE_CLASS_ICONS[damageClassSlug]}" class="damage-class-icon ${damageClassSlug}" alt="${damageClassName}">
+                    </div>
+                    ${priorityBadge}
+                </div>
             </div>
             <div class="divider"></div>
             <div class="move-stats">
