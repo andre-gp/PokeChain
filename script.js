@@ -636,8 +636,9 @@ async function renderBreadcrumbs(speciesData) {
 }
 
 async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible) {
+    const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     return `
-                <div class="result-card" id="result-card" ${isVisible ? `` : `style="display:none"`}>
+                <div class="result-card" id="result-card" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
                     <div class="pokemon-header">
                         <img class="pokemon-sprite" src="${pSprite}" alt="${pName}">
                         <div class="pokemon-info">
@@ -1043,6 +1044,7 @@ async function showTypeDetails(typeName) {
     title.innerHTML = `<span class="type-badge" style="background:${TYPE_COLORS[typeName] || '#888'}">${typeName}</span>`;
     body.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
     modal.style.display = 'block';
+    modal.querySelector('.type-modal-content').style.borderLeft = `3px solid ${TYPE_COLORS[typeName] || '#888'}`;
 
     try {
         // Fetch type data using the English slug
