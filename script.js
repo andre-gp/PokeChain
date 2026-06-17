@@ -1055,7 +1055,7 @@ async function showTypeDetails(typeName) {
 
             const badges = await Promise.all(typesArray.map(async t => {
                 const localizedName = await cachedFetchNameInCurrentLanguage(t.url);
-                return `<span class="type-relation-badge" style="background:${TYPE_COLORS[t.name] || '#888'}">${localizedName}</span>`;
+                return `<button class="type-relation-badge" style="background:${TYPE_COLORS[t.name] || '#888'}" onclick="showTypeDetails('${t.name}')">${localizedName}</button>`;
             }));
             return badges.join('');
         };

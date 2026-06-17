@@ -961,6 +961,23 @@ button.type-badge {
     color: #fff;
 }
 
+button.type-relation-badge {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+button.type-relation-badge:hover {
+    opacity: 0.9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+button.type-relation-badge:active {
+    transform: translateY(0) scale(0.95);
+}
+
 /* Responsive for Modal */
 @media (max-width: 520px) {
     .type-modal-body-wrapper {
