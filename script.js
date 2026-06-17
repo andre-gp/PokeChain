@@ -17,7 +17,7 @@ const API_GENDER = 'https://pokeapi.co/api/v2/gender/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v2.4',
+    version: 'v2.5',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -168,7 +168,10 @@ function stripArrayToCurrentLanguageEntry(data) {
 }
 
 // Strip functions to minimize localStorage footprint
-const stripPokemonList = (data) => data.results.map(r => ({ name: r.name }));
+const stripPokemonList = (data) => data.results.map(r => {
+    const idMatch = r.url.match(/\/(\d+)\//);
+    return { name: r.name, id: idMatch ? parseInt(idMatch[1]) : 0 };
+});
 
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
@@ -268,6 +271,21 @@ let allPokemonNames = [];
 let searchTimeout = null;
 let activeSuggestionIndex = -1;
 let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'true';
+let searchStartTime = 0;
+let pendingFormsData = null;
+
+function findPathInChain(chain, targetName) {
+    function traverse(node, path) {
+        const current = [...path, node.species.name];
+        if (node.species.name === targetName) return current;
+        for (const next of node.evolves_to) {
+            const result = traverse(next, current);
+            if (result) return result;
+        }
+        return null;
+    }
+    return traverse(chain, []);
+}
 
 const searchInput = document.getElementById('searchInput');
 const searchSpinner = document.getElementById('searchSpinner');
@@ -320,14 +338,7 @@ function clearResults() {
 async function loadPokemonList() {
     try {
         const data = await cachedFetch('https://pokeapi.co/api/v2/pokemon?limit=1025', stripPokemonList);
-        allPokemonNames = data.map(p => {
-            const idMatch = p.url.match(/\/(\d+)\//);
-            return {
-                name: p.name,
-                url: p.url,
-                id: idMatch ? parseInt(idMatch[1]) : 0
-            };
-        });
+        allPokemonNames = data;
     } catch (e) {
         console.warn('Failed to load pokemon list for autocomplete', e);
     }
@@ -441,6 +452,7 @@ async function search(query) {
     errorMsg.classList.remove('visible');
     resultsDiv.innerHTML = '';
     searchSpinner.classList.add('active');
+    if (DEBUG) searchStartTime = performance.now();
 
     try {
         const pokemonUrl = `https://pokeapi.co/api/v2/pokemon/${cleanQuery}`;
@@ -494,6 +506,21 @@ function showError(msg) {
     errorMsg.classList.add('visible');
 }
 
+async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) {
+    const pkmnData = await cachedFetch(API_POKEMON + variety.pokemon.name, stripPokemon);
+    const mainFormPromise = cachedFetch(API_FORMS + pkmnData.forms[0].name, stripForm);
+    const pTypesPromise = Promise.all(
+        pkmnData.types.map(async slot => ({
+            name: await cachedFetchNameInCurrentLanguage(slot.type.url),
+            slug: slot.type.name
+        }))
+    );
+    const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
+    const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
+    /*if (mainForm.is_mega || mainForm.form_name === 'gmax' || mainForm.form_name === 'starter') return '';*/
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible);
+}
+
 async function renderResults(speciesData, pokemonData, evoChainData) {
     const pName = getCurrentLanguageName(speciesData);
     const pId = pokemonData.id;
@@ -503,15 +530,8 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
     if (evoChainData) {
         html += '<div class="breadcrumb">';
 
-        let currentNode = speciesData;
-
-        path = [{ name: currentNode.name }]
-
-        // 1. Find root
-        while (currentNode.evolves_from_species) {
-            currentNode = await cachedFetch(API_SPECIES + currentNode.evolves_from_species.name, stripSpecies);
-            path = [{ name: currentNode.name }, ...path];
-        }
+        path = (findPathInChain(evoChainData.chain, speciesData.name) ?? [speciesData.name])
+            .map(name => ({ name }));
 
         path.forEach((pNode, idx) => {
             if (idx > 0) html += '<span class="sep">→</span>';
@@ -535,74 +555,40 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         html += '</div>';
     }
 
-    const results = (await Promise.all(
-        speciesData.varieties.map(async (variety, idx) => {
+    const defaultVariety = speciesData.varieties.find(v => v.is_default) ?? speciesData.varieties[0];
+    html += await renderVarietyCard(defaultVariety, speciesData, evoChainData, true);
 
-            // Start fetching Pokémon immediately
-            const pkmnData = await cachedFetch(API_POKEMON + variety.pokemon.name, stripPokemon);
-
-            // Start these simultaneously
-            const mainFormPromise = cachedFetch(API_FORMS + pkmnData.forms[0].name, stripForm);
-
-            const pTypesPromise = Promise.all(
-                pkmnData.types.map(async slot => ({
-                    name: await cachedFetchNameInCurrentLanguage(slot.type.url),
-                    slug: slot.type.name
-                }))
-            );
-
-            const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
-
-            // Wait for all three together
-            const [mainForm, pTypes, myEvos] = await Promise.all([
-                mainFormPromise,
-                pTypesPromise,
-                myEvosPromise
-            ]);
-
-            if (mainForm.is_mega || mainForm.form_name === 'gmax' || mainForm.form_name === 'starter') {
-                return '';
-            }
-
-            return renderMainCard(
-                pkmnData.name,
-                pkmnData.id,
-                pkmnData.sprite,
-                pTypes,
-                myEvos,
-                idx < 1
-            );
-        })
-    )).filter(res => res !== "");
-
-    results.forEach((res, idx) => {
-        html += res;
-    });
-
-    if (results.length > 1) {
+    const otherVarieties = speciesData.varieties.filter(v => !v.is_default);
+    if (otherVarieties.length > 0) {
+        pendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
         html += `
             <div class="reveal-forms-wrapper" id="revealFormsWrapper">
                 <button class="btn-reveal-forms" onclick="showAlternativeForms()">
                     🔍 Reveal other forms
                 </button>
-                <div id="otherFormsContainer" style="display: none;"></div>
+                <div id="otherFormsContainer"></div>
             </div>
         `;
     }
 
-
     resultsDiv.innerHTML = html;
+    if (DEBUG) console.log(`[TOTAL] Search → render: ${(performance.now() - searchStartTime).toFixed(1)} ms`);
 }
 
-function showAlternativeForms() {
-    const alternativeForms = document.getElementsByClassName(`result-card`);
+async function showAlternativeForms() {
+    if (!pendingFormsData) return;
+    const wrapper = document.getElementById('revealFormsWrapper');
+    const btn = wrapper.querySelector('.btn-reveal-forms');
+    btn.disabled = true;
+    const { varieties, speciesData, evoChainData } = pendingFormsData;
+    pendingFormsData = null;
 
-    for (const element of alternativeForms) {
-        element.removeAttribute("style");
-    }
+    const results = (await Promise.all(
+        varieties.map(v => renderVarietyCard(v, speciesData, evoChainData, true))
+    )).filter(r => r !== '');
 
-    const revealBtn = document.getElementById(`revealFormsWrapper`);
-    revealBtn.style.display = 'none';
+    document.getElementById('otherFormsContainer').innerHTML = results.join('');
+    btn.style.display = 'none';
 }
 
 async function renderBreadcrumbs(speciesData) {
@@ -700,49 +686,44 @@ async function renderEvolutions(evoInfo, pName) {
         return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
     }
 
-    let html = '';
+    const branches = await Promise.all(
+        evoInfo.map(async (evoTarget, idx) => {
+            const targetName = evoTarget.species.name;
+            const methodGroups = evoTarget.evolution_details;
 
-    for (const [idx, evoTarget] of evoInfo.entries()) {
-        const targetName = evoTarget.species.name;
-
-        // Group details into distinct method boxes
-        const methodGroups = evoTarget.evolution_details;
-
-        // Render one spoiler box per distinct method
-
-        const spoilerBoxes = (
-            await Promise.all(
-                methodGroups.map((group, boxIdx) =>
-                    renderMethodBox(targetName, group, boxIdx, idx, pName)
+            const spoilerBoxes = (
+                await Promise.all(
+                    methodGroups.map((group, boxIdx) =>
+                        renderMethodBox(targetName, group, boxIdx, idx, pName)
+                    )
                 )
-            )
-        ).join('');
+            ).join('');
 
-        const evoId = idx + pName + targetName;
-
-        html += `
-            <div class="evo-branch">
-                <div class="evo-row">
-                    <div class="evo-card">
-                        <div class="evo-name-row" id="evoNameRow-${evoId}">
-                            <button class="btn-reveal-evo" onclick="toggleEvoReveal('${evoId}', '${targetName}')" id="evoToggleBtn-${evoId}">
-                                Show Evolution
-                            </button>
-                            <span class="evo-hidden-text" id="evoHiddenText-${evoId}"></span>
-                            <span class="evo-target-container" id="evoTargetSpan-${evoId}">
-                                <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
-                            </span>
-                        </div>
-                        <div class="spoiler-wrapper">
-                            ${spoilerBoxes}
+            const evoId = idx + pName + targetName;
+            return `
+                <div class="evo-branch">
+                    <div class="evo-row">
+                        <div class="evo-card">
+                            <div class="evo-name-row" id="evoNameRow-${evoId}">
+                                <button class="btn-reveal-evo" onclick="toggleEvoReveal('${evoId}', '${targetName}')" id="evoToggleBtn-${evoId}">
+                                    Show Evolution
+                                </button>
+                                <span class="evo-hidden-text" id="evoHiddenText-${evoId}"></span>
+                                <span class="evo-target-container" id="evoTargetSpan-${evoId}">
+                                    <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
+                                </span>
+                            </div>
+                            <div class="spoiler-wrapper">
+                                ${spoilerBoxes}
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            ${idx < evoInfo.length - 1 ? '<div class="evo-divider"></div>' : ''}
-        `;
-    }
-    return html;
+                ${idx < evoInfo.length - 1 ? '<div class="evo-divider"></div>' : ''}
+            `;
+        })
+    );
+    return branches.join('');
 }
 
 // Group evolution details by unique method signature for multiple trigger boxes
