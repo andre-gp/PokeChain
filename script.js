@@ -1225,7 +1225,7 @@ async function renderMoveResults(moveData) {
         </div>` : '';
 
     const html = `
-        <div class="result-card move-card">
+        <div class="result-card move-card" style="border-left: 3px solid ${TYPE_COLORS[typeSlug] || '#888'}">
             <div class="move-header">
                 <div class="move-info">
                     <div class="move-name">${moveName}</div>
