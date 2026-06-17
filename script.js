@@ -1147,10 +1147,82 @@ async function renderMoveResults(moveData) {
     const typeSlug = moveData.type.name;
     const damageClassName = await cachedFetchNameInCurrentLanguage(moveData.damage_class.url);
     const damageClassSlug = moveData.damage_class.name;
+    const targetName = await cachedFetchNameInCurrentLanguage(moveData.target.url);
 
-    const effect = moveData.effect_entries[0] ? moveData.effect_entries[0].effect : 'No effect description available.';
+    const statChanges = moveData.stat_changes ?? [];
+    const resolvedStatChanges = statChanges.length > 0
+        ? await Promise.all(
+            statChanges.map(async sc => ({
+                change: sc.change,
+                name: await cachedFetchNameInCurrentLanguage(sc.stat.url)
+            }))
+          )
+        : [];
 
-    const flavorText = moveData.flavor_text_entries[0].flavor_text;
+    const rawEffect = moveData.effect_entries[0]
+        ? moveData.effect_entries[0].effect
+        : 'No effect description available.';
+    const effect = moveData.effect_chance !== null
+        ? rawEffect.replace(/\$effect_chance/g, moveData.effect_chance)
+        : rawEffect;
+
+    const flavorText = moveData.flavor_text_entries?.[0]?.flavor_text ?? '';
+
+    const p = moveData.priority;
+    const priorityBadge = p > 0
+        ? `<span class="priority-badge priority-positive">+${p}</span>`
+        : p < 0
+            ? `<span class="priority-badge priority-negative">${p}</span>`
+            : `<span class="priority-badge priority-neutral">0</span>`;
+
+    const detailRows = [];
+    const meta = moveData.meta;
+
+    if (meta) {
+        if (meta.flinch_chance > 0)
+            detailRows.push({ label: 'Flinch chance', value: `${meta.flinch_chance}%` });
+
+        if (meta.ailment && meta.ailment.name !== 'none') {
+            const ailmentLabel = meta.ailment.name.replace(/-/g, ' ');
+            detailRows.push({
+                label: 'Ailment',
+                value: meta.ailment_chance > 0 ? `${ailmentLabel} (${meta.ailment_chance}%)` : `${ailmentLabel} (always)`
+            });
+        }
+
+        if (meta.min_hits !== null && meta.max_hits !== null) {
+            detailRows.push({
+                label: 'Hits',
+                value: meta.min_hits === meta.max_hits ? `${meta.min_hits}×` : `${meta.min_hits}–${meta.max_hits}×`
+            });
+        }
+
+        if (meta.min_turns !== null && meta.max_turns !== null)
+            detailRows.push({ label: 'Duration', value: `${meta.min_turns}–${meta.max_turns} turns` });
+
+        if (meta.drain > 0)       detailRows.push({ label: 'Drain', value: `${meta.drain}% of damage dealt` });
+        else if (meta.drain < 0)  detailRows.push({ label: 'Recoil', value: `${Math.abs(meta.drain)}% of damage dealt` });
+
+        if (meta.healing > 0)     detailRows.push({ label: 'Healing', value: `${meta.healing}% max HP` });
+        if (meta.crit_rate > 0)   detailRows.push({ label: 'Crit rate', value: 'High' });
+    }
+
+    for (const sc of resolvedStatChanges) {
+        const sign = sc.change > 0 ? '+' : '';
+        detailRows.push({ label: 'Stat change', value: `${sign}${sc.change} ${sc.name}` });
+    }
+
+    const detailsSectionHtml = detailRows.length > 0 ? `
+        <div class="move-section">
+            <h4>Details</h4>
+            <div class="move-details-box">
+                ${detailRows.map(r => `
+                <div class="move-detail-row">
+                    <span class="move-detail-label">${r.label}</span>
+                    <span class="move-detail-value">${r.value}</span>
+                </div>`).join('')}
+            </div>
+        </div>` : '';
 
     const html = `
         <div class="result-card move-card">
@@ -1162,6 +1234,7 @@ async function renderMoveResults(moveData) {
                         <span class="damage-class-badge ${damageClassSlug}">${damageClassName}</span>
                     </div>
                 </div>
+                ${priorityBadge}
             </div>
             <div class="divider"></div>
             <div class="move-stats">
@@ -1177,7 +1250,12 @@ async function renderMoveResults(moveData) {
                     <span class="stat-label">PP</span>
                     <span class="stat-value">${moveData.pp}</span>
                 </div>
+                <div class="stat-item">
+                    <span class="stat-label">Target</span>
+                    <span class="stat-value stat-value--target">${targetName}</span>
+                </div>
             </div>
+            ${detailsSectionHtml}
             <div class="move-section">
                 <h4>Effect</h4>
                 <p class="move-effect">${effect}</p>
