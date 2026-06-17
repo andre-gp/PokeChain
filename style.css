@@ -1186,6 +1186,14 @@ button.type-relation-badge:active {
             border-radius: 2px;
         }
 
+.move-section--flavor h4 {
+    color: var(--warning);
+}
+
+    .move-section--flavor h4::before {
+        background: var(--warning);
+    }
+
 .move-effect, .move-flavor {
     color: var(--text-secondary);
     line-height: 1.6;

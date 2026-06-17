@@ -1265,17 +1265,17 @@ async function renderMoveResults(moveData) {
                     <span class="stat-value stat-value--target">${targetName}</span>
                 </div>
             </div>
-            ${detailsSectionHtml}
-            <div class="move-section">
-                <h4>Effect</h4>
-                <p class="move-effect">${effect}</p>
-            </div>
             ${flavorText ? `
-            <div class="move-section">
+            <div class="move-section move-section--flavor">
                 <h4>Description</h4>
                 <p class="move-flavor">${flavorText}</p>
             </div>
             ` : ''}
+            <div class="move-section">
+                <h4>Effect</h4>
+                <p class="move-effect">${effect}</p>
+            </div>
+            ${detailsSectionHtml}
         </div>
     `;
 
