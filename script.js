@@ -488,8 +488,20 @@ async function search(query) {
             const defaultVariety = speciesData.varieties.find(v => v.is_default);
 
             if (defaultVariety) {
-                console.log(`[Redirect] "${cleanQuery}" → "${defaultVariety.pokemon.name}"`);
-                navigateTo(defaultVariety.pokemon.name);
+                const targetName = defaultVariety.pokemon.name;
+
+                if (targetName !== cleanQuery) {
+                    console.log(`[Redirect] "${cleanQuery}" → "${targetName}"`);
+                    navigateTo(targetName);
+                } else {
+                    // If the species is found before the pokémon, and it shares the same name,
+                    // we need to render directly (e.g: eevee (pokémon) === eevee (species))
+                    // because the hash won't change
+                    const pokemonData = await cachedFetch(API_POKEMON + targetName, stripPokemon);
+                    const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
+                    await renderResults(speciesData, pokemonData, evoChainData);
+                }
+
                 return;
             }
 
