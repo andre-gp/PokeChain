@@ -26,7 +26,7 @@ const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v2.6',
+    version: 'v2.7',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -201,7 +201,9 @@ const stripPokemon = (data) => ({
     types: data.types,
     species: data.species,
     stats: data.stats.map(s => ({ base_stat: s.base_stat, name: s.stat.name })),
-    abilities: data.abilities.map(a => ({ name: a.ability.name, is_hidden: a.is_hidden }))
+    abilities: data.abilities.map(a => ({ name: a.ability.name, is_hidden: a.is_hidden })),
+    height: data.height,
+    weight: data.weight
 });
 
 const stripForm = (data) => ({
@@ -293,8 +295,27 @@ let searchTimeout = null;
 let activeSuggestionIndex = -1;
 let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'true';
 let alwaysShowDetails = localStorage.getItem('pokechain_always_show_details') === 'true';
+let showHeightWeight = localStorage.getItem('pokechain_show_hw') === 'true';
 let searchStartTime = 0;
 let pendingFormsData = null;
+
+const HISTORY_KEY = 'pokechain_history';
+const HISTORY_MAX = 8;
+
+function getHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function addToHistory(name) {
+    const h = getHistory().filter(n => n !== name);
+    h.unshift(name);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, HISTORY_MAX)));
+}
+function removeFromHistory(name) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(getHistory().filter(n => n !== name)));
+}
+function clearHistory() {
+    localStorage.removeItem(HISTORY_KEY);
+}
 
 function findPathInChain(chain, targetName) {
     function traverse(node, path) {
@@ -330,6 +351,13 @@ settingAlwaysShowDetails.checked = alwaysShowDetails;
 settingAlwaysShowDetails.addEventListener('change', () => {
     alwaysShowDetails = settingAlwaysShowDetails.checked;
     localStorage.setItem('pokechain_always_show_details', alwaysShowDetails);
+});
+
+const settingShowHW = document.getElementById('settingShowHW');
+settingShowHW.checked = showHeightWeight;
+settingShowHW.addEventListener('change', () => {
+    showHeightWeight = settingShowHW.checked;
+    localStorage.setItem('pokechain_show_hw', showHeightWeight);
 });
 
 function openSettings() {
@@ -394,6 +422,12 @@ loadMoveList();
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
     clearTimeout(searchTimeout);
+
+    if (val.length === 0) {
+        showHistorySuggestions();
+        return;
+    }
+
     if (val.length < 2 || (allPokemonNames.length === 0 && allMoveNames.length === 0) || !autocompleteEnabled) {
         suggestionsDiv.classList.remove('visible');
         return;
@@ -401,6 +435,12 @@ searchInput.addEventListener('input', (e) => {
     searchTimeout = setTimeout(() => {
         showSuggestions(val);
     }, 150);
+});
+
+searchInput.addEventListener('focus', () => {
+    if (searchInput.value.trim() === '') {
+        showHistorySuggestions();
+    }
 });
 
 searchInput.addEventListener('keydown', (e) => {
@@ -482,6 +522,71 @@ function showSuggestions(query) {
     activeSuggestionIndex = -1;
 }
 
+function historyItemHTML(name) {
+    const clockBadge = `<span class="suggestion-history-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>`;
+    const removeBtn = `<button class="suggestion-remove" data-remove="${name}" aria-label="Remove from history">&times;</button>`;
+
+    const pokemon = allPokemonNames.find(p => p.name === name);
+    if (pokemon) {
+        return `
+            <div class="suggestion-item suggestion-item--history" data-name="${name}">
+                <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemon.id}.png" alt="" loading="lazy">
+                <span class="suggestion-name">${name}</span>
+                ${clockBadge}
+                ${removeBtn}
+            </div>`;
+    }
+
+    return `
+        <div class="suggestion-item suggestion-item--move suggestion-item--history" data-name="${name}">
+            <span class="suggestion-move-icon">⚡</span>
+            <span class="suggestion-name">${name}</span>
+            ${clockBadge}
+            ${removeBtn}
+        </div>`;
+}
+
+function showHistorySuggestions() {
+    const history = getHistory();
+    if (history.length === 0) {
+        suggestionsDiv.classList.remove('visible');
+        return;
+    }
+
+    const itemsHTML = history.map(historyItemHTML).join('');
+
+    suggestionsDiv.innerHTML = `
+        <div class="suggestions-history-header">
+            <span>Recent</span>
+            <button class="suggestions-clear-all">Clear all</button>
+        </div>
+        ${itemsHTML}
+    `;
+
+    suggestionsDiv.querySelector('.suggestions-clear-all').addEventListener('click', () => {
+        clearHistory();
+        suggestionsDiv.classList.remove('visible');
+    });
+
+    suggestionsDiv.querySelectorAll('.suggestion-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeFromHistory(btn.dataset.remove);
+            showHistorySuggestions();
+        });
+    });
+
+    suggestionsDiv.querySelectorAll('.suggestion-item--history').forEach(item => {
+        item.addEventListener('click', () => {
+            navigateTo(item.dataset.name);
+            suggestionsDiv.classList.remove('visible');
+        });
+    });
+
+    suggestionsDiv.classList.add('visible');
+    activeSuggestionIndex = -1;
+}
+
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.search-wrapper')) {
         suggestionsDiv.classList.remove('visible');
@@ -531,6 +636,7 @@ async function search(query) {
             const speciesData = await cachedFetch(API_SPECIES + pokemonData.species.name, stripSpecies);
             const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
             await renderResults(speciesData, pokemonData, evoChainData);
+            addToHistory(cleanQuery);
             return;
         }
 
@@ -551,6 +657,7 @@ async function search(query) {
                     const pokemonData = await cachedFetch(API_POKEMON + targetName, stripPokemon);
                     const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
                     await renderResults(speciesData, pokemonData, evoChainData);
+                    addToHistory(cleanQuery);
                 }
 
                 return;
@@ -562,6 +669,7 @@ async function search(query) {
 
         if (result.type === "move") {
             await renderMoveResults(result.value);
+            addToHistory(cleanQuery);
             return;
         }
     } catch (err) {
@@ -590,7 +698,7 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
 
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities);
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight);
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData) {
@@ -707,7 +815,7 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = []) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     const panelId    = `details-panel-${pName}-${pId}`;
     const panelBtnId = `details-btn-${pName}-${pId}`;
@@ -731,6 +839,8 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                     </svg>
                                 </button>`}
                             </div>
+                            ${showHeightWeight && height != null && weight != null ? `
+                            <div class="pokemon-hw">${(height / 10).toFixed(1)} m &nbsp;·&nbsp; ${(weight / 10).toFixed(1)} kg</div>` : ''}
                             <div class="type-badges">
                                 ${pTypes.map(t => `<button class="type-badge" style="background:${TYPE_COLORS[t.slug] || '#888'}" onclick="showTypeDetails('${t.slug}')">${t.name}</button>`).join('')}
                             </div>
