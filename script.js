@@ -292,6 +292,7 @@ let allMoveNames = [];
 let searchTimeout = null;
 let activeSuggestionIndex = -1;
 let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'true';
+let alwaysShowDetails = localStorage.getItem('pokechain_always_show_details') === 'true';
 let searchStartTime = 0;
 let pendingFormsData = null;
 
@@ -313,17 +314,30 @@ const searchSpinner = document.getElementById('searchSpinner');
 const suggestionsDiv = document.getElementById('suggestions');
 const errorMsg = document.getElementById('errorMsg');
 const resultsDiv = document.getElementById('results');
-const autocompleteToggle = document.getElementById('autocompleteToggle');
-
-autocompleteToggle.checked = autocompleteEnabled;
-autocompleteToggle.addEventListener('change', () => {
-    autocompleteEnabled = autocompleteToggle.checked;
+const settingAutocomplete = document.getElementById('settingAutocomplete');
+settingAutocomplete.checked = autocompleteEnabled;
+settingAutocomplete.addEventListener('change', () => {
+    autocompleteEnabled = settingAutocomplete.checked;
     localStorage.setItem('pokechain_autocomplete', autocompleteEnabled);
     if (!autocompleteEnabled) {
         suggestionsDiv.classList.remove('visible');
         activeSuggestionIndex = -1;
     }
 });
+
+const settingAlwaysShowDetails = document.getElementById('settingAlwaysShowDetails');
+settingAlwaysShowDetails.checked = alwaysShowDetails;
+settingAlwaysShowDetails.addEventListener('change', () => {
+    alwaysShowDetails = settingAlwaysShowDetails.checked;
+    localStorage.setItem('pokechain_always_show_details', alwaysShowDetails);
+});
+
+function openSettings() {
+    document.getElementById('settingsModal').style.display = 'block';
+}
+function closeSettings() {
+    document.getElementById('settingsModal').style.display = 'none';
+}
 
 // Routing Helper (Hash-based for static servers)
 function navigateTo(name) {
@@ -634,6 +648,9 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
     }
 
     resultsDiv.innerHTML = html;
+    if (alwaysShowDetails) {
+        document.querySelectorAll('.details-panel').forEach(p => loadDetailsPanel(p));
+    }
     if (DEBUG) console.log(`[TOTAL] Search → render: ${(performance.now() - searchStartTime).toFixed(1)} ms`);
 }
 
@@ -711,12 +728,13 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                     <div class="evolution-section">
                         ${await renderEvolutions(evoInfo, pName)}
                     </div>
+                    ${alwaysShowDetails ? '' : `
                     <div class="details-toggle-row">
                         <button class="btn-details-toggle" id="${panelBtnId}"
                             onclick="toggleDetailsPanel('${panelId}', '${panelBtnId}')"
-                            aria-expanded="false">Base Stats &amp; Abilities</button>
-                    </div>
-                    <div class="details-panel" id="${panelId}"
+                            aria-expanded="false">Stats &amp; Abilities</button>
+                    </div>`}
+                    <div class="details-panel${alwaysShowDetails ? ' visible' : ''}" id="${panelId}"
                         data-pkmn-details="${encodedDetails}"></div>
                 </div>
             `;
@@ -894,17 +912,8 @@ function smoothScrollIntoView(el, padding = 52, duration = 480) {
     requestAnimationFrame(step);
 }
 
-async function toggleDetailsPanel(panelId, btnId) {
-    const panel = document.getElementById(panelId);
-    const btn   = document.getElementById(btnId);
-    const isOpen = panel.classList.toggle('visible');
-    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    btn.classList.toggle('active', isOpen);
-
-    if (panel.dataset.loaded) {
-        if (isOpen) smoothScrollIntoView(panel);
-        return;
-    }
+async function loadDetailsPanel(panel) {
+    if (panel.dataset.loaded) return;
 
     panel.innerHTML = '<div style="text-align:center;padding:16px"><div class="spinner" style="margin:0 auto"></div></div>';
 
@@ -953,6 +962,18 @@ async function toggleDetailsPanel(panelId, btnId) {
         </div>`;
 
     panel.dataset.loaded = 'true';
+}
+
+async function toggleDetailsPanel(panelId, btnId) {
+    const panel = document.getElementById(panelId);
+    const btn   = document.getElementById(btnId);
+    const isOpen = panel.classList.toggle('visible');
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    btn.classList.toggle('active', isOpen);
+
+    if (!isOpen) return;
+
+    await loadDetailsPanel(panel);
     smoothScrollIntoView(panel);
 }
 
@@ -1278,9 +1299,13 @@ window.addEventListener('click', function (event) {
 // Close modal when pressing the Escape key
 window.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
-        const modal = document.getElementById('typeModal');
-        if (modal && modal.style.display === 'block') {
-            modal.style.display = 'none';
+        const typeModal = document.getElementById('typeModal');
+        if (typeModal && typeModal.style.display === 'block') {
+            typeModal.style.display = 'none';
+        }
+        const settingsModal = document.getElementById('settingsModal');
+        if (settingsModal && settingsModal.style.display === 'block') {
+            settingsModal.style.display = 'none';
         }
     }
 });

@@ -17,6 +17,13 @@
         <header>
             <div class="logo" onclick="navigateTo('')">PokéChain</div>
             <div class="subtitle">Spoiler-free evolution chain tracker</div>
+            <button class="settings-btn" id="settingsBtn" onclick="openSettings()" aria-label="Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
         </header>
 
         <div class="search-wrapper">
@@ -29,16 +36,29 @@
             <div class="suggestions" id="suggestions"></div>
         </div>
 
-        <div class="settings-row">
-            <label class="toggle-wrapper">
-                <input type="checkbox" id="autocompleteToggle">
-                <span class="toggle-track"></span>
-                <span>Enable autocomplete</span>
-            </label>
-        </div>
-
         <div class="error-msg" id="errorMsg"></div>
         <div id="results"></div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="type-modal" onclick="closeSettings()">
+        <div class="type-modal-content settings-modal-content" onclick="event.stopPropagation()">
+            <span class="type-modal-close" onclick="closeSettings()">&times;</span>
+            <h2>Settings</h2>
+            <div class="settings-section">
+                <div class="settings-section-title">Pokémon</div>
+                <label class="toggle-wrapper">
+                    <input type="checkbox" id="settingAutocomplete">
+                    <span class="toggle-track"></span>
+                    <span>Enable autocomplete</span>
+                </label>
+                <label class="toggle-wrapper">
+                    <input type="checkbox" id="settingAlwaysShowDetails">
+                    <span class="toggle-track"></span>
+                    <span>Always show base stats and abilities</span>
+                </label>
+            </div>
+        </div>
     </div>
 
     <!-- Type Details Modal -->
