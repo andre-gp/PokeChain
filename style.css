@@ -1260,3 +1260,148 @@ button.type-relation-badge:active {
     color: var(--text-secondary);
     font-style: italic;
 }
+
+/* =========================================
+   Base Stats & Abilities Details Panel
+   ========================================= */
+
+.details-toggle-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+.btn-details-toggle {
+    padding: 7px 16px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-details-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--bg-secondary);
+}
+
+.btn-details-toggle.active {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.details-panel {
+    display: none;
+    margin-top: 16px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    animation: fadeIn 0.25s ease;
+}
+
+.details-panel.visible {
+    display: block;
+}
+
+.details-panel__section-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.details-panel__stats {
+    margin-bottom: 20px;
+}
+
+.stat-row {
+    display: grid;
+    grid-template-columns: 68px 36px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.stat-row:last-child {
+    margin-bottom: 0;
+}
+
+.stat-row__label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.stat-row__value {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-bar-track {
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.stat-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.stat-bar--high { background: var(--success); }
+.stat-bar--mid  { background: var(--warning); }
+.stat-bar--low  { background: var(--danger); }
+
+.details-panel__abilities {
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
+}
+
+.ability-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+}
+
+.ability-item {
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-transform: capitalize;
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+
+.ability-hidden-tag {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-left: 4px;
+}
+
+@media (max-width: 520px) {
+    .stat-row {
+        grid-template-columns: 58px 32px 1fr;
+        gap: 6px;
+    }
+}

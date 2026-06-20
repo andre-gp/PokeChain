@@ -21,11 +21,12 @@ const API_POKEMON = 'https://pokeapi.co/api/v2/pokemon/'
 const API_SPECIES = 'https://pokeapi.co/api/v2/pokemon-species/';
 const API_FORMS = 'https://pokeapi.co/api/v2/pokemon-form/';
 const API_GENDER = 'https://pokeapi.co/api/v2/gender/';
+const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v2.5',
+    version: 'v2.6',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -198,7 +199,9 @@ const stripPokemon = (data) => ({
     name: data.name,
     sprite: data.sprites.other['official-artwork']?.front_default || data.sprites.front_default,
     types: data.types,
-    species: data.species
+    species: data.species,
+    stats: data.stats.map(s => ({ base_stat: s.base_stat, name: s.stat.name })),
+    abilities: data.abilities.map(a => ({ name: a.ability.name, is_hidden: a.is_hidden }))
 });
 
 const stripForm = (data) => ({
@@ -566,7 +569,7 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
 
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible);
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities);
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData) {
@@ -680,8 +683,11 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = []) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
+    const panelId    = `details-panel-${pName}-${pId}`;
+    const panelBtnId = `details-btn-${pName}-${pId}`;
+    const encodedDetails = encodeURIComponent(JSON.stringify({ stats, abilities }));
     return `
                 <div class="result-card" id="result-card" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
                     <div class="pokemon-header">
@@ -698,6 +704,13 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible) {
                     <div class="evolution-section">
                         ${await renderEvolutions(evoInfo, pName)}
                     </div>
+                    <div class="details-toggle-row">
+                        <button class="btn-details-toggle" id="${panelBtnId}"
+                            onclick="toggleDetailsPanel('${panelId}', '${panelBtnId}')"
+                            aria-expanded="false">Base Stats &amp; Abilities</button>
+                    </div>
+                    <div class="details-panel" id="${panelId}"
+                        data-pkmn-details="${encodedDetails}"></div>
                 </div>
             `;
 }
@@ -855,6 +868,59 @@ async function toggleMethodSpoiler(spoilerId, btnId) {
     } finally {
         delete spoiler.dataset.loading;
     }
+}
+
+async function toggleDetailsPanel(panelId, btnId) {
+    const panel = document.getElementById(panelId);
+    const btn   = document.getElementById(btnId);
+    const isOpen = panel.classList.toggle('visible');
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    btn.classList.toggle('active', isOpen);
+
+    if (panel.dataset.loaded) return;
+
+    panel.innerHTML = '<div style="text-align:center;padding:16px"><div class="spinner" style="margin:0 auto"></div></div>';
+
+    const { stats, abilities } = JSON.parse(decodeURIComponent(panel.dataset.pkmnDetails));
+
+    const STAT_LABELS = {
+        'hp': 'HP', 'attack': 'Atk', 'defense': 'Def',
+        'special-attack': 'Sp. Atk', 'special-defense': 'Sp. Def', 'speed': 'Speed'
+    };
+
+    const barsHtml = stats.map(s => {
+        const pct = Math.round((s.base_stat / 255) * 100);
+        const cls = s.base_stat >= 90 ? 'stat-bar--high' : s.base_stat >= 50 ? 'stat-bar--mid' : 'stat-bar--low';
+        return `<div class="stat-row">
+            <span class="stat-row__label">${STAT_LABELS[s.name] || s.name}</span>
+            <span class="stat-row__value">${s.base_stat}</span>
+            <div class="stat-bar-track"><div class="stat-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        </div>`;
+    }).join('');
+
+    const resolvedAbilities = await Promise.all(
+        abilities.map(async a => ({
+            displayName: await cachedFetchNameInCurrentLanguage(API_ABILITY + a.name),
+            is_hidden: a.is_hidden
+        }))
+    );
+
+    const abilitiesHtml = resolvedAbilities.map(a => {
+        const tag = a.is_hidden ? ' <span class="ability-hidden-tag">(hidden)</span>' : '';
+        return `<li class="ability-item">${a.displayName}${tag}</li>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="details-panel__stats">
+            <div class="details-panel__section-title">Base Stats</div>
+            ${barsHtml}
+        </div>
+        <div class="details-panel__abilities">
+            <div class="details-panel__section-title">Abilities</div>
+            <ul class="ability-list">${abilitiesHtml}</ul>
+        </div>`;
+
+    panel.dataset.loaded = 'true';
 }
 
 function updateBreadcrumbPreview(currentName, nextName, isRevealed) {
