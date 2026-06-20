@@ -181,6 +181,8 @@ const stripPokemonList = (data) => data.results.map(r => {
     return { name: r.name, id: idMatch ? parseInt(idMatch[1]) : 0 };
 });
 
+const stripMoveList = (data) => data.results.map(r => r.name);
+
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
     evolves_from_species: data.evolves_from_species,
@@ -276,6 +278,7 @@ function stripMove(data) {
 }
 
 let allPokemonNames = [];
+let allMoveNames = [];
 let searchTimeout = null;
 let activeSuggestionIndex = -1;
 let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'true';
@@ -352,12 +355,22 @@ async function loadPokemonList() {
     }
 }
 
+async function loadMoveList() {
+    try {
+        const data = await cachedFetch('https://pokeapi.co/api/v2/move?limit=1000', stripMoveList);
+        allMoveNames = data;
+    } catch (e) {
+        console.warn('Failed to load move list for autocomplete', e);
+    }
+}
+
 loadPokemonList();
+loadMoveList();
 
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
     clearTimeout(searchTimeout);
-    if (val.length < 2 || allPokemonNames.length === 0 || !autocompleteEnabled) {
+    if (val.length < 2 || (allPokemonNames.length === 0 && allMoveNames.length === 0) || !autocompleteEnabled) {
         suggestionsDiv.classList.remove('visible');
         return;
     }
@@ -403,22 +416,36 @@ function updateActiveSuggestion(items) {
 }
 
 function showSuggestions(query) {
-    const matches = allPokemonNames
+    const pokemonMatches = allPokemonNames
         .filter(p => p.name.includes(query))
-        .slice(0, 8);
+        .slice(0, 5);
 
-    if (matches.length === 0) {
+    const moveMatches = allMoveNames
+        .filter(m => m.includes(query))
+        .slice(0, 8 - pokemonMatches.length);
+
+    if (pokemonMatches.length === 0 && moveMatches.length === 0) {
         suggestionsDiv.classList.remove('visible');
         return;
     }
 
-    suggestionsDiv.innerHTML = matches.map(p => `
-                <div class="suggestion-item" data-name="${p.name}">
-                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" alt="" loading="lazy">
-                    <span class="suggestion-name">${p.name}</span>
-                    <span class="suggestion-id">#${String(p.id).padStart(3, '0')}</span>
-                </div>
-            `).join('');
+    const pokemonHTML = pokemonMatches.map(p => `
+        <div class="suggestion-item" data-name="${p.name}">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" alt="" loading="lazy">
+            <span class="suggestion-name">${p.name}</span>
+            <span class="suggestion-id">#${String(p.id).padStart(3, '0')}</span>
+        </div>
+    `).join('');
+
+    const moveHTML = moveMatches.map(m => `
+        <div class="suggestion-item suggestion-item--move" data-name="${m}">
+            <span class="suggestion-move-icon">⚡</span>
+            <span class="suggestion-name">${m}</span>
+            <span class="suggestion-badge">Move</span>
+        </div>
+    `).join('');
+
+    suggestionsDiv.innerHTML = pokemonHTML + moveHTML;
 
     suggestionsDiv.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('click', () => {
