@@ -884,7 +884,10 @@ async function toggleDetailsPanel(panelId, btnId) {
     btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     btn.classList.toggle('active', isOpen);
 
-    if (panel.dataset.loaded) return;
+    if (panel.dataset.loaded) {
+        if (isOpen) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+    }
 
     panel.innerHTML = '<div style="text-align:center;padding:16px"><div class="spinner" style="margin:0 auto"></div></div>';
 
@@ -933,6 +936,7 @@ async function toggleDetailsPanel(panelId, btnId) {
         </div>`;
 
     panel.dataset.loaded = 'true';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function updateBreadcrumbPreview(currentName, nextName, isRevealed) {
