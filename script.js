@@ -1077,6 +1077,14 @@ async function loadDetailsPanel(panel) {
             <ul class="ability-list">${abilitiesHtml}</ul>
         </div>`;
 
+    panel.querySelectorAll('.ability-item[data-tooltip]').forEach(el => {
+        el.tabIndex = 0;
+        el.addEventListener('mouseenter', () => abilityTooltip.show(el));
+        el.addEventListener('mouseleave', () => abilityTooltip.hide());
+        el.addEventListener('focus',      () => abilityTooltip.show(el));
+        el.addEventListener('blur',       () => abilityTooltip.hide());
+    });
+
     panel.dataset.loaded = 'true';
 }
 
@@ -1580,6 +1588,41 @@ function getJsonSize(json) {
     return (bytes / 1024).toFixed(2);
     console.log(bytes + " bytes");
 }
+
+const abilityTooltip = (() => {
+    const el = document.createElement('div');
+    el.className = 'ability-tooltip';
+    document.body.appendChild(el);
+
+    function show(target) {
+        el.textContent = target.dataset.tooltip;
+        el.classList.add('visible');
+        position(target);
+    }
+
+    function position(target) {
+        const rect = target.getBoundingClientRect();
+        const margin = 8;
+        const tw = Math.min(220, window.innerWidth - 16);
+        const th = el.offsetHeight;
+
+        let left = rect.left + rect.width / 2 - tw / 2;
+        let top  = rect.top - th - margin;
+
+        left = Math.max(margin, Math.min(left, window.innerWidth - tw - margin));
+        if (top < margin) top = rect.bottom + margin;
+
+        el.style.left  = left + 'px';
+        el.style.top   = top  + 'px';
+        el.style.width = tw   + 'px';
+    }
+
+    function hide() {
+        el.classList.remove('visible');
+    }
+
+    return { show, hide };
+})();
 
 if (DEBUG) {
     const bytes = getLocalStorageSize();

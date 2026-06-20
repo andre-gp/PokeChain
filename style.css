@@ -1482,17 +1482,13 @@ button.type-relation-badge:active {
 }
 
 .ability-item[data-tooltip] {
-    position: relative;
     cursor: help;
 }
 
-.ability-item[data-tooltip]::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
+.ability-tooltip {
+    position: fixed;
     width: 220px;
+    max-width: calc(100vw - 16px);
     padding: 8px 10px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
@@ -1507,10 +1503,10 @@ button.type-relation-badge:active {
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s;
-    z-index: 20;
+    z-index: 100;
 }
 
-.ability-item[data-tooltip]:hover::after {
+.ability-tooltip.visible {
     opacity: 1;
 }
 
