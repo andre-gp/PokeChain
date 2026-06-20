@@ -877,6 +877,23 @@ async function toggleMethodSpoiler(spoilerId, btnId) {
     }
 }
 
+function smoothScrollIntoView(el, padding = 52, duration = 480) {
+    const rect = el.getBoundingClientRect();
+    const overflow = rect.bottom + padding - window.innerHeight;
+    if (overflow <= 0) return;
+    const startY = window.scrollY;
+    const dist = overflow;
+    let startTime;
+    function step(ts) {
+        if (!startTime) startTime = ts;
+        const t = Math.min((ts - startTime) / duration, 1);
+        const ease = 1 - Math.pow(1 - t, 3);
+        window.scrollTo(0, startY + dist * ease);
+        if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
 async function toggleDetailsPanel(panelId, btnId) {
     const panel = document.getElementById(panelId);
     const btn   = document.getElementById(btnId);
@@ -885,7 +902,7 @@ async function toggleDetailsPanel(panelId, btnId) {
     btn.classList.toggle('active', isOpen);
 
     if (panel.dataset.loaded) {
-        if (isOpen) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (isOpen) smoothScrollIntoView(panel);
         return;
     }
 
@@ -936,7 +953,7 @@ async function toggleDetailsPanel(panelId, btnId) {
         </div>`;
 
     panel.dataset.loaded = 'true';
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    smoothScrollIntoView(panel);
 }
 
 function updateBreadcrumbPreview(currentName, nextName, isRevealed) {
