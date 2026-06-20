@@ -259,6 +259,13 @@ function stripToOnlyNames(data) {
     }
 }
 
+const stripAbility = (data) => ({
+    id: data.id,
+    name: data.name,
+    names: stripArrayToCurrentLanguageEntry(data.names),
+    effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries)
+});
+
 function stripMove(data) {
     return {
         accuracy: data.accuracy,
@@ -899,15 +906,20 @@ async function toggleDetailsPanel(panelId, btnId) {
     }).join('');
 
     const resolvedAbilities = await Promise.all(
-        abilities.map(async a => ({
-            displayName: await cachedFetchNameInCurrentLanguage(API_ABILITY + a.name),
-            is_hidden: a.is_hidden
-        }))
+        abilities.map(async a => {
+            const abilityData = await cachedFetch(API_ABILITY + a.name, stripAbility);
+            return {
+                displayName: getCurrentLanguageName(abilityData),
+                shortEffect: abilityData.effect_entries?.[0]?.short_effect ?? '',
+                is_hidden: a.is_hidden
+            };
+        })
     );
 
     const abilitiesHtml = resolvedAbilities.map(a => {
         const tag = a.is_hidden ? ' <span class="ability-hidden-tag">(hidden)</span>' : '';
-        return `<li class="ability-item">${a.displayName}${tag}</li>`;
+        const tooltip = a.shortEffect ? ` data-tooltip="${a.shortEffect.replace(/"/g, '&quot;')}"` : '';
+        return `<li class="ability-item"${tooltip}>${a.displayName}${tag}</li>`;
     }).join('');
 
     panel.innerHTML = `
