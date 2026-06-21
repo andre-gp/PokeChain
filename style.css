@@ -439,6 +439,12 @@ header {
     color: var(--accent);
 }
 
+.chain-length-badge {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
 .type-badges {
     display: flex;
     gap: 8px;

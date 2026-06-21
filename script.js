@@ -706,7 +706,8 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
 
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight);
+    const chainDepth = getChainDepth(evoChainData.chain);
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth);
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData) {
@@ -834,7 +835,7 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainDepth = null) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     const panelId    = `details-panel-${pName}-${pId}`;
     const panelBtnId = `details-btn-${pName}-${pId}`;
@@ -857,6 +858,16 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                         <line x1="6" y1="20" x2="6" y2="14"/>
                                     </svg>
                                 </button>`}
+                                ${chainDepth !== null ? `
+                                <button class="btn-stats-icon" onclick="revealChainLength(this, ${chainDepth})" title="Reveal number of evolution stages">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                        <circle cx="3" cy="12" r="2.5"/>
+                                        <circle cx="12" cy="12" r="2.5"/>
+                                        <circle cx="21" cy="12" r="2.5"/>
+                                        <rect x="6" y="11" width="4" height="2" rx="1"/>
+                                        <rect x="15" y="11" width="4" height="2" rx="1"/>
+                                    </svg>
+                                </button>` : ''}
                             </div>
                             ${showHeightWeight && height != null && weight != null ? `
                             <div class="pokemon-hw">${(height / 10).toFixed(1)} m &nbsp;·&nbsp; ${(weight / 10).toFixed(1)} kg</div>` : ''}
@@ -873,6 +884,11 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                         data-pkmn-details="${encodedDetails}"></div>
                 </div>
             `;
+}
+
+function getChainDepth(chainNode) {
+    if (!chainNode || !chainNode.evolves_to || chainNode.evolves_to.length === 0) return 1;
+    return 1 + Math.max(...chainNode.evolves_to.map(getChainDepth));
 }
 
 async function findMyEvos(chainNode, speciesData, pokemonData) {
@@ -1334,6 +1350,13 @@ function getCurrentLanguageName(data) {
     return (data.names.find(n => n.language.name === CURRENT_LANGUAGE)?.name)
         || (data.names[0]?.name)
         || (data.name);
+}
+
+function revealChainLength(btn, depth) {
+    const span = document.createElement('span');
+    span.className = 'chain-length-badge';
+    span.textContent = `${depth} stage${depth !== 1 ? 's' : ''}`;
+    btn.replaceWith(span);
 }
 
 function toggleSpoiler(idx) {
