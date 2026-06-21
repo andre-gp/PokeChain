@@ -347,11 +347,23 @@ settingAutocomplete.addEventListener('change', () => {
     }
 });
 
+document.body.classList.toggle('show-hw', showHeightWeight);
+document.body.classList.toggle('always-show-details', alwaysShowDetails);
+
 const settingAlwaysShowDetails = document.getElementById('settingAlwaysShowDetails');
 settingAlwaysShowDetails.checked = alwaysShowDetails;
 settingAlwaysShowDetails.addEventListener('change', () => {
     alwaysShowDetails = settingAlwaysShowDetails.checked;
     localStorage.setItem('pokechain_always_show_details', alwaysShowDetails);
+    document.body.classList.toggle('always-show-details', alwaysShowDetails);
+    if (alwaysShowDetails) {
+        document.querySelectorAll('.details-panel').forEach(p => {
+            p.classList.add('visible');
+            loadDetailsPanel(p);
+        });
+    } else {
+        document.querySelectorAll('.details-panel').forEach(p => p.classList.remove('visible'));
+    }
 });
 
 const settingShowHW = document.getElementById('settingShowHW');
@@ -359,6 +371,7 @@ settingShowHW.checked = showHeightWeight;
 settingShowHW.addEventListener('change', () => {
     showHeightWeight = settingShowHW.checked;
     localStorage.setItem('pokechain_show_hw', showHeightWeight);
+    document.body.classList.toggle('show-hw', showHeightWeight);
 });
 
 const settingAlwaysShowForms = document.getElementById('settingAlwaysShowForms');
@@ -366,6 +379,9 @@ settingAlwaysShowForms.checked = alwaysShowForms;
 settingAlwaysShowForms.addEventListener('change', () => {
     alwaysShowForms = settingAlwaysShowForms.checked;
     localStorage.setItem('pokechain_always_show_forms', alwaysShowForms);
+    if (alwaysShowForms && pendingFormsData) {
+        showAlternativeForms();
+    }
 });
 
 function openSettings() {
@@ -773,7 +789,10 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
 
     resultsDiv.innerHTML = html;
     if (alwaysShowDetails) {
-        document.querySelectorAll('.details-panel').forEach(p => loadDetailsPanel(p));
+        document.querySelectorAll('.details-panel').forEach(p => {
+            p.classList.add('visible');
+            loadDetailsPanel(p);
+        });
     }
     if (DEBUG) console.log(`[TOTAL] Search → render: ${(performance.now() - searchStartTime).toFixed(1)} ms`);
 }
@@ -793,7 +812,10 @@ async function showAlternativeForms() {
     const container = document.getElementById('otherFormsContainer');
     container.innerHTML = results.join('');
     if (alwaysShowDetails) {
-        container.querySelectorAll('.details-panel').forEach(p => loadDetailsPanel(p));
+        container.querySelectorAll('.details-panel').forEach(p => {
+            p.classList.add('visible');
+            loadDetailsPanel(p);
+        });
     }
     btn.style.display = 'none';
 }
@@ -848,8 +870,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id-row">
                                 <span class="pokemon-id">#${String(pId).padStart(3, '0')}</span>
-                                ${alwaysShowDetails ? '' : `
-                                <button class="btn-stats-icon" id="${panelBtnId}"
+                                <button class="btn-stats-icon btn-toggle-details" id="${panelBtnId}"
                                     onclick="toggleDetailsPanel('${panelId}', '${panelBtnId}')"
                                     aria-expanded="false" title="Base Stats &amp; Abilities">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -857,7 +878,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                         <line x1="12" y1="20" x2="12" y2="4"/>
                                         <line x1="6" y1="20" x2="6" y2="14"/>
                                     </svg>
-                                </button>`}
+                                </button>
                                 ${chainDepth !== null ? `
                                 <button class="btn-stats-icon" onclick="revealChainLength(this, ${chainDepth})" title="Reveal number of evolution stages">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -869,7 +890,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                     </svg>
                                 </button>` : ''}
                             </div>
-                            ${showHeightWeight && height != null && weight != null ? `
+                            ${height != null && weight != null ? `
                             <div class="pokemon-hw">${(height / 10).toFixed(1)} m &nbsp;·&nbsp; ${(weight / 10).toFixed(1)} kg</div>` : ''}
                             <div class="type-badges">
                                 ${pTypes.map(t => `<button class="type-badge" style="background:${TYPE_COLORS[t.slug] || '#888'}" onclick="showTypeDetails('${t.slug}')">${t.name}</button>`).join('')}
@@ -880,7 +901,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                     <div class="evolution-section">
                         ${await renderEvolutions(evoInfo, pName)}
                     </div>
-                    <div class="details-panel${alwaysShowDetails ? ' visible' : ''}" id="${panelId}"
+                    <div class="details-panel" id="${panelId}"
                         data-pkmn-details="${encodedDetails}"></div>
                 </div>
             `;

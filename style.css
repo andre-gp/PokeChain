@@ -423,6 +423,9 @@ header {
     margin-bottom: 8px;
 }
 
+body:not(.show-hw) .pokemon-hw { display: none; }
+body.always-show-details .btn-toggle-details { display: none; }
+
 .btn-stats-icon {
     background: none;
     border: none;
