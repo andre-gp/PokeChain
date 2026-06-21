@@ -296,6 +296,7 @@ let activeSuggestionIndex = -1;
 let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'true';
 let alwaysShowDetails = localStorage.getItem('pokechain_always_show_details') === 'true';
 let showHeightWeight = localStorage.getItem('pokechain_show_hw') === 'true';
+let alwaysShowForms = localStorage.getItem('pokechain_always_show_forms') === 'true';
 let searchStartTime = 0;
 let pendingFormsData = null;
 
@@ -358,6 +359,13 @@ settingShowHW.checked = showHeightWeight;
 settingShowHW.addEventListener('change', () => {
     showHeightWeight = settingShowHW.checked;
     localStorage.setItem('pokechain_show_hw', showHeightWeight);
+});
+
+const settingAlwaysShowForms = document.getElementById('settingAlwaysShowForms');
+settingAlwaysShowForms.checked = alwaysShowForms;
+settingAlwaysShowForms.addEventListener('change', () => {
+    alwaysShowForms = settingAlwaysShowForms.checked;
+    localStorage.setItem('pokechain_always_show_forms', alwaysShowForms);
 });
 
 function openSettings() {
@@ -744,15 +752,22 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
     );
 
     if (hasRevealableVarieties) {
-        pendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
-        html += `
-            <div class="reveal-forms-wrapper" id="revealFormsWrapper">
-                <button class="btn-reveal-forms" onclick="showAlternativeForms()">
-                    🔍 Reveal other forms
-                </button>
-                <div id="otherFormsContainer"></div>
-            </div>
-        `;
+        if (alwaysShowForms) {
+            const formResults = (await Promise.all(
+                otherVarieties.map(v => renderVarietyCard(v, speciesData, evoChainData, true))
+            )).filter(r => r !== '');
+            html += `<div id="otherFormsContainer">${formResults.join('')}</div>`;
+        } else {
+            pendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
+            html += `
+                <div class="reveal-forms-wrapper" id="revealFormsWrapper">
+                    <button class="btn-reveal-forms" onclick="showAlternativeForms()">
+                        🔍 Reveal other forms
+                    </button>
+                    <div id="otherFormsContainer"></div>
+                </div>
+            `;
+        }
     }
 
     resultsDiv.innerHTML = html;
@@ -774,7 +789,11 @@ async function showAlternativeForms() {
         varieties.map(v => renderVarietyCard(v, speciesData, evoChainData, true))
     )).filter(r => r !== '');
 
-    document.getElementById('otherFormsContainer').innerHTML = results.join('');
+    const container = document.getElementById('otherFormsContainer');
+    container.innerHTML = results.join('');
+    if (alwaysShowDetails) {
+        container.querySelectorAll('.details-panel').forEach(p => loadDetailsPanel(p));
+    }
     btn.style.display = 'none';
 }
 
