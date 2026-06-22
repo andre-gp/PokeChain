@@ -1,0 +1,676 @@
+// ============================================================
+// Team Builder — Settings
+// ============================================================
+
+let teamBuilderEnabled = localStorage.getItem('pokechain_team_builder') === 'true';
+const settingTeamBuilder = document.getElementById('settingTeamBuilder');
+settingTeamBuilder.checked = teamBuilderEnabled;
+settingTeamBuilder.addEventListener('change', () => {
+    teamBuilderEnabled = settingTeamBuilder.checked;
+    localStorage.setItem('pokechain_team_builder', teamBuilderEnabled);
+    document.getElementById('teamBuilderBtn').style.display = teamBuilderEnabled ? 'inline-flex' : 'none';
+});
+if (teamBuilderEnabled) document.getElementById('teamBuilderBtn').style.display = 'inline-flex';
+
+// ============================================================
+// Team Builder — Utilities
+// ============================================================
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ============================================================
+// Team Builder — Data Layer
+// ============================================================
+
+const TEAMS_KEY = 'pokechain_teams';
+let activeTeamId = null;
+
+function loadTeams() {
+    try { return JSON.parse(localStorage.getItem(TEAMS_KEY) || '[]'); } catch { return []; }
+}
+function saveTeams(teams) {
+    localStorage.setItem(TEAMS_KEY, JSON.stringify(teams));
+}
+function generateTeamId() {
+    return 'team_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+}
+function createTeamRecord(name) {
+    return { id: generateTeamId(), name: name || 'Team 1', pokemon: Array(6).fill(null) };
+}
+function getTeam(teamId) {
+    return loadTeams().find(t => t.id === teamId) || null;
+}
+function saveTeam(updatedTeam) {
+    const teams = loadTeams();
+    const idx = teams.findIndex(t => t.id === updatedTeam.id);
+    if (idx >= 0) teams[idx] = updatedTeam; else teams.push(updatedTeam);
+    saveTeams(teams);
+}
+function deleteTeam(teamId) {
+    saveTeams(loadTeams().filter(t => t.id !== teamId));
+}
+function renameTeam(teamId, newName) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (team) { team.name = newName.trim() || team.name; saveTeams(teams); }
+}
+function setPokemonInSlot(teamId, slotIndex, pokemonName) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+    team.pokemon[slotIndex] = { name: pokemonName, moves: [null, null, null, null] };
+    saveTeams(teams);
+}
+function removePokemonFromSlot(teamId, slotIndex) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+    team.pokemon[slotIndex] = null;
+    saveTeams(teams);
+}
+function setMoveInSlot(teamId, slotIndex, moveIndex, moveName) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team || !team.pokemon[slotIndex]) return;
+    team.pokemon[slotIndex].moves[moveIndex] = moveName;
+    saveTeams(teams);
+}
+function reorderPokemonSlots(teamId, fromIndex, toIndex) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team || fromIndex === toIndex) return;
+    const temp = team.pokemon[fromIndex];
+    team.pokemon[fromIndex] = team.pokemon[toIndex];
+    team.pokemon[toIndex] = temp;
+    saveTeams(teams);
+}
+
+// ============================================================
+// Team Builder — Open / Close
+// ============================================================
+
+let teamBuilderOpen = false;
+let tbEditMode = false;
+let tbMoveSearchState = null; // { teamId, slotIndex, moveIndex }
+let tbDragState = null;       // { teamId, fromIndex }
+
+function toggleTeamBuilder() {
+    if (teamBuilderOpen) closeTeamBuilder(); else openTeamBuilder();
+}
+function openTeamBuilder() {
+    teamBuilderOpen = true;
+    tbEditMode = false;
+    if (window.location.hash !== '#team-builder') window.location.hash = 'team-builder';
+    document.querySelector('.search-wrapper').style.display = 'none';
+    document.getElementById('errorMsg').style.display = 'none';
+    document.getElementById('results').style.display = 'none';
+    const view = document.getElementById('teamBuilderView');
+    view.style.display = 'block';
+    view.classList.remove('edit-mode');
+    document.getElementById('teamBuilderBtn').classList.add('active');
+    const teams = loadTeams();
+    if (teams.length === 0) {
+        const first = createTeamRecord('Team 1');
+        saveTeam(first);
+        activeTeamId = first.id;
+    } else if (!activeTeamId || !teams.find(t => t.id === activeTeamId)) {
+        activeTeamId = teams[0].id;
+    }
+    renderTeamBuilder();
+}
+function closeTeamBuilder() {
+    teamBuilderOpen = false;
+    if (window.location.hash === '#team-builder') window.location.hash = '';
+    document.getElementById('teamBuilderView').style.display = 'none';
+    document.querySelector('.search-wrapper').style.display = '';
+    document.getElementById('errorMsg').style.display = '';
+    document.getElementById('results').style.display = '';
+    document.getElementById('teamBuilderBtn').classList.remove('active');
+    document.removeEventListener('click', dismissTbSuggestions);
+}
+function toggleTbEditMode() {
+    tbEditMode = !tbEditMode;
+    if (!tbEditMode) closeTbMoveSearch();
+    document.getElementById('teamBuilderView').classList.toggle('edit-mode', tbEditMode);
+    document.getElementById('tbEditModeBtn').classList.toggle('active', tbEditMode);
+    // Re-render tabs to show/hide delete button and rename handler
+    renderTeamBuilderTabs();
+}
+
+async function showMoveInfo(moveName) {
+    const modal = document.getElementById('moveInfoModal');
+    const body = document.getElementById('moveInfoBody');
+    modal.style.display = 'block';
+    body.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const moveData = await cachedFetch('https://pokeapi.co/api/v2/move/' + moveName, stripMove);
+        await renderMoveResults(moveData, body);
+    } catch {
+        body.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;">Failed to load move.</p>';
+    }
+}
+function closeMoveInfoModal() {
+    document.getElementById('moveInfoModal').style.display = 'none';
+}
+
+function createNewTeam() {
+    const teams = loadTeams();
+    const newTeam = createTeamRecord('Team ' + (teams.length + 1));
+    saveTeam(newTeam);
+    activeTeamId = newTeam.id;
+    renderTeamBuilder();
+}
+
+// ============================================================
+// Team Builder — Rendering
+// ============================================================
+
+function renderTeamBuilder() {
+    renderTeamBuilderTabs();
+    const team = getTeam(activeTeamId);
+    const bodyEl = document.getElementById('teamBuilderBody');
+    if (!team) {
+        bodyEl.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:40px;">No team selected.</p>';
+        return;
+    }
+    bodyEl.innerHTML = `
+        <div class="tb-search-row">
+            <div class="tb-search-wrapper">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" class="tb-search-input" id="tbPokemonSearch"
+                    placeholder="Search Pokémon to add..."
+                    autocomplete="off" spellcheck="false"
+                    oninput="onTbPokemonInput(event)"
+                    onkeydown="onTbPokemonKeydown(event)">
+                <div class="suggestions tb-suggestions" id="tbSuggestions"></div>
+            </div>
+        </div>
+        <div class="tb-grid" id="tbGrid"></div>
+    `;
+    renderAllSlots(team);
+
+    // Dismiss tb suggestions on outside click (idempotent: remove before re-adding)
+    document.removeEventListener('click', dismissTbSuggestions);
+    document.addEventListener('click', dismissTbSuggestions);
+}
+
+function renderTeamBuilderTabs() {
+    const teams = loadTeams();
+    const tabsEl = document.getElementById('teamBuilderTabs');
+    if (!tabsEl) return;
+    tabsEl.innerHTML = teams.map(team => `
+        <div class="tb-tab ${team.id === activeTeamId ? 'active' : ''}"
+             onclick="switchTeam('${team.id}')">
+            <span class="tb-tab-name"
+                  id="tbTabName-${team.id}"
+                  ${tbEditMode ? `ondblclick="startRenameTeam('${team.id}')" title="Double-click to rename"` : ''}
+                  >${escapeHtml(team.name)}</span>
+            ${tbEditMode ? `<button class="tb-tab-delete"
+                    onclick="event.stopPropagation(); confirmDeleteTeam('${team.id}')"
+                    title="Delete team">&times;</button>` : ''}
+        </div>
+    `).join('');
+}
+
+function renderAllSlots(team) {
+    const grid = document.getElementById('tbGrid');
+    if (!grid) return;
+    grid.innerHTML = team.pokemon.map((slot, idx) => `
+        <div class="tb-slot" id="tbSlot-${team.id}-${idx}" data-team="${team.id}" data-slot="${idx}"
+             draggable="true"
+             ondragstart="onTbSlotDragStart(event, '${team.id}', ${idx})"
+             ondragover="onTbSlotDragOver(event, '${team.id}', ${idx})"
+             ondragleave="onTbSlotDragLeave(event)"
+             ondrop="onTbSlotDrop(event, '${team.id}', ${idx})"
+             ondragend="onTbSlotDragEnd()">
+            ${renderEmptySlot(team.id, idx)}
+        </div>
+    `).join('');
+    team.pokemon.forEach((slot, idx) => {
+        if (slot) loadSlotCard(team.id, idx, slot);
+    });
+}
+
+function renderEmptySlot(teamId, slotIndex) {
+    return `
+        <div class="tb-empty-slot" onclick="focusTbSearch()">
+            <div class="tb-empty-icon">+</div>
+            <div class="tb-empty-label">Add Pokémon</div>
+        </div>
+    `;
+}
+
+function focusTbSearch() {
+    const input = document.getElementById('tbPokemonSearch');
+    if (input) input.focus();
+}
+
+function renderCompactCard(pName, pId, pSprite, pTypes, stats = []) {
+    const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
+
+    const STAT_SHORT = {
+        'hp': 'HP', 'attack': 'Atk', 'defense': 'Def',
+        'special-attack': 'SpA', 'special-defense': 'SpD', 'speed': 'Spe'
+    };
+
+    const statsHtml = stats.length ? (() => {
+        const pairs = [];
+        for (let i = 0; i < stats.length; i += 2) pairs.push([stats[i], stats[i + 1]]);
+        const renderStat = s => {
+            if (!s) return '<div class="cc-stat"></div>';
+            const pct = Math.round((s.base_stat / 255) * 100);
+            const cls = s.base_stat >= 90 ? 'stat-bar--high' : s.base_stat >= 50 ? 'stat-bar--mid' : 'stat-bar--low';
+            return `<div class="cc-stat">
+                <span class="cc-stat__label">${STAT_SHORT[s.name] || s.name}</span>
+                <span class="cc-stat__value">${s.base_stat}</span>
+                <div class="stat-bar-track cc-stat__bar"><div class="stat-bar-fill ${cls}" style="width:${pct}%"></div></div>
+            </div>`;
+        };
+        return `<div class="cc-stats-grid">${pairs.map(([a, b]) => `<div class="cc-stat-row">${renderStat(a)}${renderStat(b)}</div>`).join('')}</div>`;
+    })() : '';
+
+    return `
+        <div class="result-card compact-card" style="border-left: 3px solid ${primaryTypeColor};">
+            <div class="compact-card-header">
+                <img class="compact-sprite" src="${pSprite}" alt="${pName}">
+                <div class="pokemon-info">
+                    <div class="compact-name">${pName}</div>
+                    <div class="pokemon-id-row">
+                        <span class="pokemon-id">#${String(pId).padStart(3, '0')}</span>
+                    </div>
+                    <div class="type-badges">
+                        ${pTypes.map(t => `<button class="type-badge" style="background:${TYPE_COLORS[t.slug] || '#888'}" onclick="showTypeDetails('${t.slug}')">${t.name}</button>`).join('')}
+                    </div>
+                </div>
+            </div>
+            ${statsHtml}
+        </div>
+    `;
+}
+
+async function loadSlotCard(teamId, slotIndex, slotData) {
+    const container = document.getElementById(`tbSlot-${teamId}-${slotIndex}`);
+    if (!container) return;
+    container.innerHTML = `
+        <div class="tb-slot-loading">
+            <div class="spinner" style="margin: 0 auto;"></div>
+        </div>
+    `;
+    try {
+        const pokemonName = slotData.name;
+        const pokemonData = await cachedFetch(API_POKEMON + pokemonName, stripPokemon);
+        const pTypes = await Promise.all(
+            pokemonData.types.map(async slot => ({
+                name: await cachedFetchNameInCurrentLanguage(slot.type.url),
+                slug: slot.type.name
+            }))
+        );
+        const cardHtml = renderCompactCard(
+            pokemonData.name, pokemonData.id, pokemonData.sprite,
+            pTypes, pokemonData.stats
+        );
+        container.innerHTML = `
+            <div class="tb-slot-inner">
+                <div class="tb-drag-handle" title="Drag to reorder">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                        <circle cx="4" cy="2" r="1.2"/><circle cx="8" cy="2" r="1.2"/>
+                        <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
+                        <circle cx="4" cy="10" r="1.2"/><circle cx="8" cy="10" r="1.2"/>
+                    </svg>
+                </div>
+                <button class="tb-slot-remove"
+                    onclick="removeFromTeam('${teamId}', ${slotIndex})"
+                    title="Remove Pokémon">&times;</button>
+                ${cardHtml}
+                ${renderMoveButtons(teamId, slotIndex, slotData.moves)}
+            </div>
+        `;
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `
+            <div class="tb-slot-error">
+                <div>Failed to load ${escapeHtml(slotData.name)}</div>
+                <button class="btn-reveal" onclick="removeFromTeam('${teamId}', ${slotIndex})">Remove</button>
+            </div>
+        `;
+    }
+}
+
+function renderMoveButtons(teamId, slotIndex, moves) {
+    const buttons = moves.map((moveName, moveIdx) => {
+        if (moveName) {
+            const moveData = PokeCache.get('https://pokeapi.co/api/v2/move/' + moveName);
+            const typeColor = moveData?.type?.name ? (TYPE_COLORS[moveData.type.name] || null) : null;
+            const colorStyle = typeColor
+                ? ` style="border-color:${typeColor};color:${typeColor};background:${typeColor}18;"`
+                : '';
+            return `<button class="tb-move-btn tb-move-btn--filled"${colorStyle}
+                onclick="onMoveButtonClick(this, '${teamId}', ${slotIndex}, ${moveIdx}, '${escapeHtml(moveName)}')"
+                title="${escapeHtml(moveName)}">${escapeHtml(moveName)}</button>`;
+        }
+        return `<button class="tb-move-btn tb-move-btn--empty"
+            onclick="onMoveButtonClick(this, '${teamId}', ${slotIndex}, ${moveIdx}, '')">+ Move ${moveIdx + 1}</button>`;
+    }).join('');
+    return `<div class="tb-move-row" id="tbMoveRow-${teamId}-${slotIndex}"
+        data-team="${teamId}" data-slot="${slotIndex}">${buttons}</div>`;
+}
+
+// ============================================================
+// Team Builder — Drag-and-Drop Reordering
+// ============================================================
+
+function onTbSlotDragStart(event, teamId, slotIndex) {
+    if (!tbEditMode) { event.preventDefault(); return; }
+    const team = getTeam(teamId);
+    if (!team || team.pokemon[slotIndex] === null) { event.preventDefault(); return; }
+    tbDragState = { teamId, fromIndex: slotIndex };
+    event.dataTransfer.effectAllowed = 'move';
+    event.currentTarget.classList.add('tb-slot--dragging');
+}
+
+function onTbSlotDragOver(event, teamId, toIndex) {
+    if (!tbEditMode || !tbDragState || tbDragState.teamId !== teamId) return;
+    if (tbDragState.fromIndex === toIndex) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.tb-slot--drag-over').forEach(el => el.classList.remove('tb-slot--drag-over'));
+    event.currentTarget.classList.add('tb-slot--drag-over');
+}
+
+function onTbSlotDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+        event.currentTarget.classList.remove('tb-slot--drag-over');
+    }
+}
+
+function onTbSlotDrop(event, teamId, toIndex) {
+    if (!tbEditMode || !tbDragState || tbDragState.teamId !== teamId) return;
+    event.preventDefault();
+    const fromIndex = tbDragState.fromIndex;
+    tbDragState = null;
+    document.querySelectorAll('.tb-slot--dragging, .tb-slot--drag-over').forEach(el => {
+        el.classList.remove('tb-slot--dragging', 'tb-slot--drag-over');
+    });
+    if (fromIndex === toIndex) return;
+    reorderPokemonSlots(teamId, fromIndex, toIndex);
+    renderAllSlots(getTeam(teamId));
+}
+
+function onTbSlotDragEnd() {
+    tbDragState = null;
+    document.querySelectorAll('.tb-slot--dragging, .tb-slot--drag-over').forEach(el => {
+        el.classList.remove('tb-slot--dragging', 'tb-slot--drag-over');
+    });
+}
+
+// ============================================================
+// Team Builder — Move Search
+// ============================================================
+
+function onMoveButtonClick(btnEl, teamId, slotIndex, moveIdx, moveName) {
+    if (tbEditMode) {
+        openMoveSearch(btnEl, teamId, slotIndex, moveIdx);
+    } else if (moveName) {
+        showMoveInfo(moveName);
+    }
+}
+
+function ensureMoveSearchPanel() {
+    if (document.getElementById('tbMoveSearchPanel')) return;
+    const panel = document.createElement('div');
+    panel.id = 'tbMoveSearchPanel';
+    panel.className = 'tb-move-search-panel';
+    panel.innerHTML = `
+        <input type="text" class="tb-move-input" id="tbMoveSearchInput"
+            placeholder="Move name..." autocomplete="off" spellcheck="false">
+        <div class="tb-move-search-sugg" id="tbMoveSearchSugg"></div>
+        <div class="tb-move-search-actions">
+            <button class="btn-reveal" onclick="submitTbMoveSearch()">OK</button>
+            <button class="btn-reveal" onclick="closeTbMoveSearch()">Cancel</button>
+            <button class="btn-reveal tb-move-delete-btn" onclick="deleteTbMove()">Delete</button>
+            <span class="tb-move-error" id="tbMoveSearchErr"></span>
+        </div>
+    `;
+    document.body.appendChild(panel);
+    const input = panel.querySelector('#tbMoveSearchInput');
+    input.addEventListener('input', () => showTbMoveSuggestions(input.value.trim().toLowerCase()));
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); submitTbMoveSearch(); }
+        else if (e.key === 'Escape') { e.preventDefault(); closeTbMoveSearch(); }
+    });
+}
+
+function openMoveSearch(btnEl, teamId, slotIndex, moveIndex) {
+    ensureMoveSearchPanel();
+    closeTbMoveSearch(); // close any previously open panel first
+    tbMoveSearchState = { teamId, slotIndex, moveIndex };
+
+    const panel = document.getElementById('tbMoveSearchPanel');
+    const input = document.getElementById('tbMoveSearchInput');
+    const errEl = document.getElementById('tbMoveSearchErr');
+    const suggDiv = document.getElementById('tbMoveSearchSugg');
+
+    const existingMove = getTeam(teamId)?.pokemon[slotIndex]?.moves[moveIndex] || '';
+    input.value = existingMove;
+    errEl.textContent = '';
+    suggDiv.classList.remove('visible');
+
+    // Position above the clicked button (fixed, no card resizing)
+    const rect = btnEl.getBoundingClientRect();
+    const panelW = 260;
+    let left = rect.left;
+    if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
+    if (left < 8) left = 8;
+    panel.style.left = left + 'px';
+    panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    panel.style.top = 'auto';
+    panel.classList.add('visible');
+
+    input.focus();
+    input.select();
+
+    setTimeout(() => document.addEventListener('click', onTbMoveSearchOutsideClick), 0);
+}
+
+function onTbMoveSearchOutsideClick(e) {
+    const panel = document.getElementById('tbMoveSearchPanel');
+    if (panel && !panel.contains(e.target)) closeTbMoveSearch();
+}
+
+function closeTbMoveSearch() {
+    const panel = document.getElementById('tbMoveSearchPanel');
+    if (panel) panel.classList.remove('visible');
+    tbMoveSearchState = null;
+    document.removeEventListener('click', onTbMoveSearchOutsideClick);
+}
+
+function showTbMoveSuggestions(query) {
+    const suggDiv = document.getElementById('tbMoveSearchSugg');
+    if (!suggDiv) return;
+    if (!query || query.length < 2 || allMoveNames.length === 0) {
+        suggDiv.classList.remove('visible');
+        return;
+    }
+    const matches = allMoveNames.filter(m => m.includes(query)).slice(0, 6);
+    if (matches.length === 0) { suggDiv.classList.remove('visible'); return; }
+    suggDiv.innerHTML = matches.map(m => `<div class="suggestion-item" data-name="${m}">${m}</div>`).join('');
+    suggDiv.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('mousedown', e => {
+            e.preventDefault();
+            document.getElementById('tbMoveSearchInput').value = item.dataset.name;
+            suggDiv.classList.remove('visible');
+            submitTbMoveSearch();
+        });
+    });
+    suggDiv.classList.add('visible');
+}
+
+async function submitTbMoveSearch() {
+    if (!tbMoveSearchState) return;
+    const { teamId, slotIndex, moveIndex } = tbMoveSearchState;
+    const input = document.getElementById('tbMoveSearchInput');
+    const errEl = document.getElementById('tbMoveSearchErr');
+    const moveName = input.value.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!moveName) { closeTbMoveSearch(); return; }
+    try {
+        await cachedFetch('https://pokeapi.co/api/v2/move/' + moveName, stripMove);
+        setMoveInSlot(teamId, slotIndex, moveIndex, moveName);
+        closeTbMoveSearch();
+        refreshMoveRow(teamId, slotIndex);
+    } catch {
+        if (errEl) errEl.textContent = `"${moveName}" not found.`;
+    }
+}
+
+function deleteTbMove() {
+    if (!tbMoveSearchState) return;
+    const { teamId, slotIndex, moveIndex } = tbMoveSearchState;
+    setMoveInSlot(teamId, slotIndex, moveIndex, null);
+    closeTbMoveSearch();
+    refreshMoveRow(teamId, slotIndex);
+}
+
+function refreshMoveRow(teamId, slotIndex) {
+    const rowEl = document.getElementById(`tbMoveRow-${teamId}-${slotIndex}`);
+    if (!rowEl) return;
+    const team = getTeam(teamId);
+    if (!team || !team.pokemon[slotIndex]) return;
+    rowEl.outerHTML = renderMoveButtons(teamId, slotIndex, team.pokemon[slotIndex].moves);
+}
+
+// ============================================================
+// Team Builder — Pokémon Search
+// ============================================================
+
+function onTbPokemonInput(event) {
+    const val = event.target.value.trim().toLowerCase();
+    const suggDiv = document.getElementById('tbSuggestions');
+    if (!suggDiv) return;
+    if (!val || val.length < 2 || allPokemonNames.length === 0 || !autocompleteEnabled) {
+        suggDiv.classList.remove('visible');
+        return;
+    }
+    const matches = allPokemonNames.filter(p => p.name.includes(val)).slice(0, 6);
+    if (matches.length === 0) { suggDiv.classList.remove('visible'); return; }
+    suggDiv.innerHTML = matches.map(p => `
+        <div class="suggestion-item" data-name="${p.name}">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" alt="" loading="lazy">
+            <span class="suggestion-name">${p.name}</span>
+            <span class="suggestion-id">#${String(p.id).padStart(3, '0')}</span>
+        </div>
+    `).join('');
+    suggDiv.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+            addPokemonToTeam(activeTeamId, item.dataset.name);
+            suggDiv.classList.remove('visible');
+            const input = document.getElementById('tbPokemonSearch');
+            if (input) input.value = '';
+        });
+    });
+    suggDiv.classList.add('visible');
+}
+
+function onTbPokemonKeydown(event) {
+    if (event.key === 'Escape') {
+        const suggDiv = document.getElementById('tbSuggestions');
+        if (suggDiv) suggDiv.classList.remove('visible');
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const val = event.target.value.trim().toLowerCase().replace(/\s+/g, '-');
+        if (!val) return;
+        const suggDiv = document.getElementById('tbSuggestions');
+        if (suggDiv) suggDiv.classList.remove('visible');
+        event.target.value = '';
+        addPokemonToTeam(activeTeamId, val);
+    }
+}
+
+function dismissTbSuggestions(event) {
+    const suggDiv = document.getElementById('tbSuggestions');
+    const wrapper = document.querySelector('.tb-search-wrapper');
+    if (suggDiv && wrapper && !wrapper.contains(event.target)) {
+        suggDiv.classList.remove('visible');
+    }
+}
+
+async function addPokemonToTeam(teamId, pokemonName) {
+    const team = getTeam(teamId);
+    if (!team) return;
+    const emptyIdx = team.pokemon.findIndex(s => s === null);
+    if (emptyIdx === -1) {
+        const input = document.getElementById('tbPokemonSearch');
+        if (input) {
+            const original = input.placeholder;
+            input.placeholder = 'Team is full! (6/6)';
+            setTimeout(() => { if (input) input.placeholder = original; }, 2500);
+        }
+        return;
+    }
+    setPokemonInSlot(teamId, emptyIdx, pokemonName);
+    const updatedTeam = getTeam(teamId);
+    await loadSlotCard(teamId, emptyIdx, updatedTeam.pokemon[emptyIdx]);
+}
+
+function removeFromTeam(teamId, slotIndex) {
+    removePokemonFromSlot(teamId, slotIndex);
+    const slotEl = document.getElementById(`tbSlot-${teamId}-${slotIndex}`);
+    if (slotEl) slotEl.innerHTML = renderEmptySlot(teamId, slotIndex);
+}
+
+// ============================================================
+// Team Builder — Tab Management
+// ============================================================
+
+function switchTeam(teamId) {
+    activeTeamId = teamId;
+    renderTeamBuilder();
+}
+
+function startRenameTeam(teamId) {
+    const nameEl = document.getElementById(`tbTabName-${teamId}`);
+    if (!nameEl) return;
+    const currentName = nameEl.textContent;
+    nameEl.outerHTML = `
+        <input class="tb-tab-rename-input" type="text" value="${escapeHtml(currentName)}"
+            id="tbRenameInput-${teamId}"
+            onblur="finishRenameTeam('${teamId}')"
+            onkeydown="handleRenameKey(event, '${teamId}')">
+    `;
+    const input = document.getElementById(`tbRenameInput-${teamId}`);
+    if (input) { input.focus(); input.select(); }
+}
+
+function handleRenameKey(event, teamId) {
+    if (event.key === 'Enter') { event.preventDefault(); finishRenameTeam(teamId); }
+    else if (event.key === 'Escape') {
+        event.preventDefault();
+        renderTeamBuilderTabs();
+    }
+}
+
+function finishRenameTeam(teamId) {
+    const input = document.getElementById(`tbRenameInput-${teamId}`);
+    if (!input) return;
+    const newName = input.value.trim();
+    if (newName) renameTeam(teamId, newName);
+    renderTeamBuilderTabs();
+}
+
+function confirmDeleteTeam(teamId) {
+    const teams = loadTeams();
+    if (teams.length === 1) { alert('You must have at least one team.'); return; }
+    if (!confirm('Delete this team?')) return;
+    deleteTeam(teamId);
+    const remaining = loadTeams();
+    activeTeamId = remaining[0]?.id || null;
+    renderTeamBuilder();
+}

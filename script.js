@@ -393,18 +393,22 @@ function closeSettings() {
 
 // Routing Helper (Hash-based for static servers)
 function navigateTo(name) {
+    if (teamBuilderOpen) closeTeamBuilder();
     const cleanName = name ? name.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-') : '';
-
     window.location.hash = cleanName;
 }
 
 // Handle Route Change
 function handleRoute() {
     const hash = window.location.hash.replace('#', '');
-    if (hash) {
+    if (hash === 'team-builder') {
+        if (!teamBuilderOpen) openTeamBuilder();
+    } else if (hash) {
+        if (teamBuilderOpen) closeTeamBuilder();
         searchInput.value = hash;
         search(hash);
     } else {
+        if (teamBuilderOpen) closeTeamBuilder();
         clearResults();
     }
 }
@@ -1486,6 +1490,13 @@ window.addEventListener('click', function (event) {
 // Close modal when pressing the Escape key
 window.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
+        const moveInfoModal = document.getElementById('moveInfoModal');
+        if (moveInfoModal && moveInfoModal.style.display === 'block') {
+            closeMoveInfoModal(); return;
+        }
+        if (teamBuilderOpen) {
+            closeTeamBuilder(); return;
+        }
         const typeModal = document.getElementById('typeModal');
         if (typeModal && typeModal.style.display === 'block') {
             typeModal.style.display = 'none';
@@ -1497,7 +1508,7 @@ window.addEventListener('keydown', function (event) {
     }
 });
 
-async function renderMoveResults(moveData) {
+async function renderMoveResults(moveData, targetEl = null) {
     const moveName = getCurrentLanguageName(moveData);
     const typeName = await cachedFetchNameInCurrentLanguage(moveData.type.url);
     const typeSlug = moveData.type.name;
@@ -1629,7 +1640,7 @@ async function renderMoveResults(moveData) {
         </div>
     `;
 
-    resultsDiv.innerHTML = html;
+    (targetEl || resultsDiv).innerHTML = html;
 }
 
 function getLocalStorageSize() {
