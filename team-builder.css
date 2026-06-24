@@ -1,0 +1,719 @@
+/* =========================================
+   Team Builder
+   ========================================= */
+
+.team-builder-btn {
+    right: 44px;
+}
+
+.team-builder-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Inline view */
+#teamBuilderView {
+    animation: fadeSlideUp 0.3s ease;
+}
+
+.tb-view-tabs-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.tb-new-team-btn {
+    font-size: 0.82rem;
+    padding: 6px 12px;
+    flex-shrink: 0;
+}
+
+/* Tabs */
+.team-builder-tabs {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    flex-shrink: 1;
+    scrollbar-width: thin;
+    flex: 1;
+}
+
+.tb-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    border: 1px solid transparent;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.tb-tab:hover {
+    border-color: var(--border-color);
+}
+
+.tb-tab.active {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.tb-tab-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tb-tab-rename-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--accent);
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+    width: 100px;
+    padding: 0 2px;
+}
+
+.tb-tab-actions {
+    display: none;
+    gap: 4px;
+}
+
+.tb-tab-rename,
+.tb-tab-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 3px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    transition: color 0.15s, opacity 0.15s;
+}
+
+.tb-tab-rename:hover { color: var(--accent); opacity: 1; }
+.tb-tab-delete:hover { color: var(--danger); opacity: 1; }
+
+/* Body */
+#teamBuilderBody {
+    padding: 0 0 40px;
+}
+
+/* Pokémon search row */
+.tb-search-row {
+    margin-bottom: 16px;
+}
+
+.tb-search-wrapper {
+    position: relative;
+    max-width: 400px;
+}
+
+.tb-search-wrapper .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+.tb-search-input {
+    width: 100%;
+    padding: 10px 14px 10px 36px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.tb-search-input:focus {
+    border-color: var(--accent);
+}
+
+.tb-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 200;
+}
+
+/* Slot grid */
+.tb-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.tb-slot {
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    background: var(--bg-primary);
+    min-height: 180px;
+    transition: border-color 0.2s;
+}
+
+.tb-slot-inner {
+    position: relative;
+}
+
+.tb-slot .result-card {
+    animation: none;
+    margin-bottom: 0;
+    border-radius: 0;
+    border: none;
+}
+
+/* Remove button */
+.tb-slot-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    background: rgba(220, 60, 60, 0.1);
+    border: 1px solid var(--danger, #dc3c3c);
+    color: var(--danger, #dc3c3c);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    padding: 0;
+}
+
+.tb-slot-remove:hover {
+    background: var(--danger, #dc3c3c);
+    color: #fff;
+}
+
+/* Empty slot placeholder */
+.tb-empty-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 180px;
+    cursor: pointer;
+    transition: background 0.2s;
+    padding: 20px;
+}
+
+.tb-empty-slot:hover {
+    background: var(--bg-secondary);
+}
+
+.tb-empty-icon {
+    font-size: 2.4rem;
+    color: var(--border-color);
+    font-weight: 300;
+    line-height: 1;
+}
+
+.tb-empty-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* Loading / error states */
+.tb-slot-loading,
+.tb-slot-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 180px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Move buttons */
+.tb-move-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 10px 12px 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+}
+
+.tb-move-btn {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s;
+    text-transform: capitalize;
+}
+
+.tb-move-btn--empty {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-style: dashed;
+}
+
+.tb-move-btn--empty:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    border-style: solid;
+}
+
+.tb-move-btn--filled {
+    background: rgba(124, 111, 232, 0.1);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.tb-move-btn--filled:hover {
+    background: rgba(124, 111, 232, 0.25);
+}
+
+/* Floating move search panel (fixed, sits above the clicked button) */
+.tb-move-search-panel {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    width: 260px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    padding: 12px;
+    gap: 10px;
+    flex-direction: column;
+}
+
+.tb-move-search-panel.visible {
+    display: flex;
+}
+
+.tb-move-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    outline: none;
+}
+
+.tb-move-input:focus {
+    border-color: var(--accent);
+}
+
+.tb-move-search-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tb-move-delete-btn {
+    margin-left: auto;
+    border-color: var(--danger, #dc3c3c);
+    color: var(--danger, #dc3c3c);
+}
+.tb-move-delete-btn:hover {
+    background: rgba(220, 60, 60, 0.15);
+}
+
+.tb-move-error {
+    font-size: 0.78rem;
+    color: var(--danger, #dc3c3c);
+    flex: 1;
+}
+
+/* Suggestion list inside the floating panel */
+.tb-move-search-sugg {
+    display: none;
+    flex-direction: column;
+    background: var(--bg-tertiary, var(--bg-secondary));
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.tb-move-search-sugg.visible {
+    display: flex;
+}
+.tb-move-search-sugg .suggestion-item {
+    padding: 7px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+}
+.tb-move-search-sugg .suggestion-item:last-child {
+    border-bottom: none;
+}
+.tb-move-search-sugg .suggestion-item:hover {
+    background: rgba(124, 111, 232, 0.15);
+}
+
+/* View / Edit mode */
+
+/* View mode defaults (no .edit-mode class = view mode) */
+.tb-slot-remove { display: none; }
+.tb-search-row  { display: none; }
+.tb-empty-slot  { display: none; cursor: default; pointer-events: none; }
+#teamBuilderView:not(.edit-mode) .tb-slot:has(.tb-empty-slot) { display: none; }
+
+#teamBuilderView:not(.edit-mode) .tb-move-btn--empty {
+    display: none;
+}
+
+/* Edit mode overrides */
+#teamBuilderView.edit-mode .tb-slot-remove  { display: flex; }
+#teamBuilderView.edit-mode .tb-empty-slot   { display: flex; cursor: pointer; pointer-events: auto; }
+#teamBuilderView.edit-mode .tb-tab-actions { display: flex; }
+#teamBuilderView.edit-mode .tb-move-btn--empty {
+    opacity: 1;
+    pointer-events: auto;
+    border-style: dashed;
+}
+
+/* Tab drag-and-drop reordering */
+#teamBuilderView.edit-mode .tb-tab { cursor: grab; }
+#teamBuilderView.edit-mode .tb-tab:active { cursor: grabbing; }
+
+.tb-tab--dragging {
+    opacity: 0.4;
+    border-style: dashed !important;
+}
+
+.tb-tab--drag-over {
+    border-color: var(--accent) !important;
+    background: rgba(124, 111, 232, 0.1);
+}
+
+/* Pencil toggle button in tabs row */
+.tb-edit-mode-btn {
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+}
+.tb-edit-mode-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* In view mode, filled move buttons hint they show info on click */
+#teamBuilderView:not(.edit-mode) .tb-move-btn--filled:hover {
+    background: rgba(124, 111, 232, 0.3);
+}
+
+/* Drag-and-drop reorder */
+.tb-drag-handle {
+    display: none;
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 10;
+    color: var(--text-secondary);
+    cursor: grab;
+    padding: 4px;
+    border-radius: 4px;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.45;
+    transition: opacity 0.15s, background 0.15s;
+}
+.tb-drag-handle:hover {
+    opacity: 1;
+    background: var(--bg-secondary);
+}
+#teamBuilderView.edit-mode .tb-drag-handle {
+    display: flex;
+}
+.tb-slot--dragging {
+    opacity: 0.4;
+    border-style: dashed !important;
+}
+.tb-slot--drag-over {
+    border-color: var(--accent) !important;
+    background: rgba(124, 111, 232, 0.06);
+    box-shadow: inset 0 0 0 2px rgba(124, 111, 232, 0.25);
+}
+
+/* Compact card (Team Builder slots) */
+.compact-card {
+    padding: 16px;
+    margin-bottom: 0;
+}
+
+.compact-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.compact-sprite {
+    width: 72px;
+    height: 72px;
+    image-rendering: pixelated;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 10px rgba(0,0,0,0.3));
+}
+
+.compact-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-transform: capitalize;
+    margin-bottom: 4px;
+}
+
+/* Compact card inline stats */
+.cc-stats-grid {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.cc-stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.cc-stat {
+    display: grid;
+    grid-template-columns: 26px 22px 1fr;
+    align-items: center;
+    gap: 4px;
+}
+
+.cc-stat__label {
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.cc-stat__value {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-align: right;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.cc-stat__bar {
+    height: 4px;
+    border-radius: 2px;
+}
+
+/* Ability row */
+.tb-ability-row {
+    padding: 6px 12px 4px;
+    background: var(--bg-secondary);
+}
+
+.tb-ability-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s;
+    text-transform: capitalize;
+    text-align: center;
+}
+
+.tb-ability-btn--empty {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-style: dashed;
+}
+
+.tb-ability-btn--empty:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    border-style: solid;
+}
+
+.tb-ability-btn--filled {
+    background: rgba(124, 111, 232, 0.08);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.tb-ability-btn--filled:hover {
+    background: rgba(124, 111, 232, 0.18);
+    border-color: var(--accent);
+}
+
+.tb-pokemon-picker-panel {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.tb-pokemon-picker-panel.visible { display: flex; }
+
+.tb-pokemon-picker-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tb-pokemon-picker-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.tb-pokemon-picker-sugg {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.tb-pokemon-picker-sugg .suggestion-item {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tb-pokemon-picker-sugg .suggestion-item:last-child {
+    border-bottom: none;
+}
+
+/* Floating ability picker */
+.tb-ability-picker {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    min-width: 190px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+
+.tb-ability-picker.visible {
+    display: block;
+}
+
+.tb-ability-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 9px 14px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    text-transform: capitalize;
+    transition: background 0.12s;
+}
+
+.tb-ability-item:last-child {
+    border-bottom: none;
+}
+
+.tb-ability-item:hover {
+    background: rgba(124, 111, 232, 0.1);
+}
+
+.tb-ability-item--active {
+    color: var(--accent);
+}
+
+.tb-ability-item--clear {
+    color: var(--danger, #dc3c3c);
+    font-size: 0.78rem;
+    text-transform: none;
+}
+
+.tb-ability-item--clear:hover {
+    background: rgba(220, 60, 60, 0.1);
+}
+
+.tb-ability-hidden-badge {
+    font-size: 0.62rem;
+    background: rgba(124, 111, 232, 0.15);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-weight: 700;
+    line-height: 1.4;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+
+/* View/Edit mode for ability */
+#teamBuilderView:not(.edit-mode) .tb-ability-btn--empty { display: none; }
+#teamBuilderView:not(.edit-mode) .tb-ability-row:has(.tb-ability-btn--empty) { display: none; }
+#teamBuilderView:not(.edit-mode) .tb-ability-btn--filled { cursor: default; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .tb-grid {
+        grid-template-columns: 1fr;
+    }
+}
