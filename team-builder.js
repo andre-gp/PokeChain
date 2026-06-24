@@ -65,7 +65,7 @@ function setPokemonInSlot(teamId, slotIndex, pokemonName) {
     const teams = loadTeams();
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    team.pokemon[slotIndex] = { name: pokemonName, moves: [null, null, null, null] };
+    team.pokemon[slotIndex] = { name: pokemonName, moves: [null, null, null, null], ability: null };
     saveTeams(teams);
 }
 function removePokemonFromSlot(teamId, slotIndex) {
@@ -80,6 +80,13 @@ function setMoveInSlot(teamId, slotIndex, moveIndex, moveName) {
     const team = teams.find(t => t.id === teamId);
     if (!team || !team.pokemon[slotIndex]) return;
     team.pokemon[slotIndex].moves[moveIndex] = moveName;
+    saveTeams(teams);
+}
+function setAbilityInSlot(teamId, slotIndex, abilityName) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team || !team.pokemon[slotIndex]) return;
+    team.pokemon[slotIndex].ability = abilityName || null;
     saveTeams(teams);
 }
 function reorderPokemonSlots(teamId, fromIndex, toIndex) {
@@ -134,10 +141,11 @@ function closeTeamBuilder() {
     document.getElementById('results').style.display = '';
     document.getElementById('teamBuilderBtn').classList.remove('active');
     document.removeEventListener('click', dismissTbSuggestions);
+    closeAbilityPicker();
 }
 function toggleTbEditMode() {
     tbEditMode = !tbEditMode;
-    if (!tbEditMode) closeTbMoveSearch();
+    if (!tbEditMode) { closeTbMoveSearch(); closeAbilityPicker(); }
     document.getElementById('teamBuilderView').classList.toggle('edit-mode', tbEditMode);
     document.getElementById('tbEditModeBtn').classList.toggle('active', tbEditMode);
     // Re-render tabs to show/hide delete button and rename handler
@@ -255,8 +263,6 @@ function focusTbSearch() {
 }
 
 function renderCompactCard(pName, pId, pSprite, pTypes, stats = []) {
-    const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
-
     const STAT_SHORT = {
         'hp': 'HP', 'attack': 'Atk', 'defense': 'Def',
         'special-attack': 'SpA', 'special-defense': 'SpD', 'speed': 'Spe'
@@ -279,7 +285,7 @@ function renderCompactCard(pName, pId, pSprite, pTypes, stats = []) {
     })() : '';
 
     return `
-        <div class="result-card compact-card" style="border-left: 3px solid ${primaryTypeColor};">
+        <div class="result-card compact-card">
             <div class="compact-card-header">
                 <img class="compact-sprite" src="${pSprite}" alt="${pName}">
                 <div class="pokemon-info">
@@ -314,6 +320,8 @@ async function loadSlotCard(teamId, slotIndex, slotData) {
                 slug: slot.type.name
             }))
         );
+        const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
+        container.style.borderLeft = `3px solid ${primaryTypeColor}`;
         const cardHtml = renderCompactCard(
             pokemonData.name, pokemonData.id, pokemonData.sprite,
             pTypes, pokemonData.stats
@@ -331,11 +339,14 @@ async function loadSlotCard(teamId, slotIndex, slotData) {
                     onclick="removeFromTeam('${teamId}', ${slotIndex})"
                     title="Remove Pokémon">&times;</button>
                 ${cardHtml}
+                ${renderAbilityRow(teamId, slotIndex, slotData, pokemonData.abilities)}
                 ${renderMoveButtons(teamId, slotIndex, slotData.moves)}
             </div>
         `;
+        wireAbilityTooltip(teamId, slotIndex);
     } catch (err) {
         console.error(err);
+        container.style.borderLeft = '';
         container.innerHTML = `
             <div class="tb-slot-error">
                 <div>Failed to load ${escapeHtml(slotData.name)}</div>
@@ -547,6 +558,124 @@ function refreshMoveRow(teamId, slotIndex) {
     rowEl.outerHTML = renderMoveButtons(teamId, slotIndex, team.pokemon[slotIndex].moves);
 }
 
+function renderAbilityRow(teamId, slotIndex, slotData, abilities) {
+    const selectedAbility = slotData.ability || null;
+    const abilitiesAttr = escapeHtml(JSON.stringify(abilities));
+    if (selectedAbility) {
+        const isHidden = abilities.find(a => a.name === selectedAbility)?.is_hidden;
+        const hiddenBadge = isHidden ? ' <span class="tb-ability-hidden-badge">H</span>' : '';
+        const displayName = selectedAbility.replace(/-/g, ' ');
+        return `<div class="tb-ability-row" id="tbAbilityRow-${teamId}-${slotIndex}" data-abilities="${abilitiesAttr}">
+            <button class="tb-ability-btn tb-ability-btn--filled"
+                onclick="onAbilityButtonClick(this, '${teamId}', ${slotIndex})">${displayName}${hiddenBadge}</button>
+        </div>`;
+    }
+    return `<div class="tb-ability-row" id="tbAbilityRow-${teamId}-${slotIndex}" data-abilities="${abilitiesAttr}">
+        <button class="tb-ability-btn tb-ability-btn--empty"
+            onclick="onAbilityButtonClick(this, '${teamId}', ${slotIndex})">+ Ability</button>
+    </div>`;
+}
+
+// ============================================================
+// Team Builder — Ability Picker
+// ============================================================
+
+let tbAbilityPickerState = null;
+
+function ensureAbilityPickerPanel() {
+    if (document.getElementById('tbAbilityPickerPanel')) return;
+    const panel = document.createElement('div');
+    panel.id = 'tbAbilityPickerPanel';
+    panel.className = 'tb-ability-picker';
+    panel.innerHTML = `<div id="tbAbilityPickerList"></div>`;
+    document.body.appendChild(panel);
+}
+
+function onAbilityButtonClick(btnEl, teamId, slotIndex) {
+    if (!tbEditMode) return;
+    const rowEl = btnEl.closest('.tb-ability-row');
+    const abilities = JSON.parse(rowEl.dataset.abilities);
+    openAbilityPicker(btnEl, teamId, slotIndex, abilities);
+}
+
+function openAbilityPicker(btnEl, teamId, slotIndex, abilities) {
+    ensureAbilityPickerPanel();
+    closeAbilityPicker();
+    tbAbilityPickerState = { teamId, slotIndex };
+    const panel = document.getElementById('tbAbilityPickerPanel');
+    const listEl = document.getElementById('tbAbilityPickerList');
+    const currentAbility = getTeam(teamId)?.pokemon[slotIndex]?.ability || null;
+
+    const items = abilities.map(a => {
+        const hiddenBadge = a.is_hidden ? ` <span class="tb-ability-hidden-badge">H</span>` : '';
+        const active = a.name === currentAbility ? ' tb-ability-item--active' : '';
+        return `<button class="tb-ability-item${active}" data-name="${a.name}">${a.name.replace(/-/g, ' ')}${hiddenBadge}</button>`;
+    });
+    if (currentAbility) {
+        items.push(`<button class="tb-ability-item tb-ability-item--clear" data-name="">Clear</button>`);
+    }
+    listEl.innerHTML = items.join('');
+    listEl.querySelectorAll('.tb-ability-item').forEach(item => {
+        item.addEventListener('click', () => {
+            setAbilityInSlot(teamId, slotIndex, item.dataset.name || null);
+            closeAbilityPicker();
+            refreshAbilityRow(teamId, slotIndex);
+        });
+    });
+
+    const rect = btnEl.getBoundingClientRect();
+    const panelW = 200;
+    let left = rect.left;
+    if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
+    if (left < 8) left = 8;
+    panel.style.left = left + 'px';
+    panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    panel.style.top = 'auto';
+    panel.classList.add('visible');
+    setTimeout(() => document.addEventListener('click', onAbilityPickerOutsideClick), 0);
+}
+
+function onAbilityPickerOutsideClick(e) {
+    const panel = document.getElementById('tbAbilityPickerPanel');
+    if (panel && !panel.contains(e.target)) closeAbilityPicker();
+}
+
+function closeAbilityPicker() {
+    const panel = document.getElementById('tbAbilityPickerPanel');
+    if (panel) panel.classList.remove('visible');
+    tbAbilityPickerState = null;
+    document.removeEventListener('click', onAbilityPickerOutsideClick);
+}
+
+function refreshAbilityRow(teamId, slotIndex) {
+    const rowEl = document.getElementById(`tbAbilityRow-${teamId}-${slotIndex}`);
+    if (!rowEl) return;
+    const team = getTeam(teamId);
+    if (!team || !team.pokemon[slotIndex]) return;
+    const abilities = JSON.parse(rowEl.dataset.abilities);
+    rowEl.outerHTML = renderAbilityRow(teamId, slotIndex, team.pokemon[slotIndex], abilities);
+    wireAbilityTooltip(teamId, slotIndex);
+}
+
+async function wireAbilityTooltip(teamId, slotIndex) {
+    const team = getTeam(teamId);
+    const abilityName = team?.pokemon[slotIndex]?.ability;
+    if (!abilityName) return;
+    const btn = document.querySelector(`#tbAbilityRow-${teamId}-${slotIndex} .tb-ability-btn--filled`);
+    if (!btn) return;
+    try {
+        const abilityData = await cachedFetch(API_ABILITY + abilityName, stripAbility);
+        const shortEffect = abilityData.effect_entries?.[0]?.short_effect ?? '';
+        if (!shortEffect) return;
+        btn.dataset.tooltip = shortEffect;
+        btn.tabIndex = 0;
+        btn.addEventListener('mouseenter', () => abilityTooltip.show(btn));
+        btn.addEventListener('mouseleave', () => abilityTooltip.hide());
+        btn.addEventListener('focus',      () => abilityTooltip.show(btn));
+        btn.addEventListener('blur',       () => abilityTooltip.hide());
+    } catch {}
+}
+
 // ============================================================
 // Team Builder — Pokémon Search
 // ============================================================
@@ -623,7 +752,10 @@ async function addPokemonToTeam(teamId, pokemonName) {
 function removeFromTeam(teamId, slotIndex) {
     removePokemonFromSlot(teamId, slotIndex);
     const slotEl = document.getElementById(`tbSlot-${teamId}-${slotIndex}`);
-    if (slotEl) slotEl.innerHTML = renderEmptySlot(teamId, slotIndex);
+    if (slotEl) {
+        slotEl.style.borderLeft = '';
+        slotEl.innerHTML = renderEmptySlot(teamId, slotIndex);
+    }
 }
 
 // ============================================================

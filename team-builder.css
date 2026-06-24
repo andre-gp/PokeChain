@@ -521,6 +521,130 @@
     border-radius: 2px;
 }
 
+/* Ability row */
+.tb-ability-row {
+    padding: 6px 12px 4px;
+    background: var(--bg-secondary);
+}
+
+.tb-ability-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s;
+    text-transform: capitalize;
+    text-align: center;
+}
+
+.tb-ability-btn--empty {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-style: dashed;
+}
+
+.tb-ability-btn--empty:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    border-style: solid;
+}
+
+.tb-ability-btn--filled {
+    background: rgba(124, 111, 232, 0.08);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.tb-ability-btn--filled:hover {
+    background: rgba(124, 111, 232, 0.18);
+    border-color: var(--accent);
+}
+
+/* Floating ability picker */
+.tb-ability-picker {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    min-width: 190px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+
+.tb-ability-picker.visible {
+    display: block;
+}
+
+.tb-ability-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 9px 14px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    text-transform: capitalize;
+    transition: background 0.12s;
+}
+
+.tb-ability-item:last-child {
+    border-bottom: none;
+}
+
+.tb-ability-item:hover {
+    background: rgba(124, 111, 232, 0.1);
+}
+
+.tb-ability-item--active {
+    color: var(--accent);
+}
+
+.tb-ability-item--clear {
+    color: var(--danger, #dc3c3c);
+    font-size: 0.78rem;
+    text-transform: none;
+}
+
+.tb-ability-item--clear:hover {
+    background: rgba(220, 60, 60, 0.1);
+}
+
+.tb-ability-hidden-badge {
+    font-size: 0.62rem;
+    background: rgba(124, 111, 232, 0.15);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-weight: 700;
+    line-height: 1.4;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+
+/* View/Edit mode for ability */
+#teamBuilderView:not(.edit-mode) .tb-ability-btn--empty { display: none; }
+#teamBuilderView:not(.edit-mode) .tb-ability-row:has(.tb-ability-btn--empty) { display: none; }
+#teamBuilderView:not(.edit-mode) .tb-ability-btn--filled { cursor: default; }
+
 /* Responsive */
 @media (max-width: 600px) {
     .tb-grid {
