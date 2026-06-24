@@ -417,6 +417,11 @@ header {
     font-size: 0.9rem;
 }
 
+.pokemon-gen {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
 .pokemon-hw {
     font-size: 0.8rem;
     color: var(--text-secondary);

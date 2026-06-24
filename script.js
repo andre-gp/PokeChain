@@ -26,7 +26,7 @@ const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v2.7',
+    version: 'v2.8',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -187,6 +187,7 @@ const stripMoveList = (data) => data.results.map(r => r.name);
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
     evolves_from_species: data.evolves_from_species,
+    generation: data.generation,
     id: data.id,
     name: data.name,
     names: data.names,
@@ -727,7 +728,7 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
 
     const chainDepth = getChainDepth(evoChainData.chain);
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth);
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth, speciesData.generation);
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData) {
@@ -861,7 +862,7 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainDepth = null) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainDepth = null, generation = null) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     const panelId    = `details-panel-${pName}-${pId}`;
     const panelBtnId = `details-btn-${pName}-${pId}`;
@@ -874,6 +875,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id-row">
                                 <span class="pokemon-id">#${String(pId).padStart(3, '0')}</span>
+                                ${generation ? `<span class="pokemon-gen">· Gen ${generation.name.split('-').slice(1).join('-').toUpperCase()} ·</span>` : ''}
                                 <button class="btn-stats-icon btn-toggle-details" id="${panelBtnId}"
                                     onclick="toggleDetailsPanel('${panelId}', '${panelBtnId}')"
                                     aria-expanded="false" title="Base Stats &amp; Abilities">
