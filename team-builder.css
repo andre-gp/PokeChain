@@ -400,7 +400,6 @@
 
 /* Edit mode overrides */
 #teamBuilderView.edit-mode .tb-slot-remove  { display: flex; }
-#teamBuilderView.edit-mode .tb-search-row   { display: block; }
 #teamBuilderView.edit-mode .tb-empty-slot   { display: flex; cursor: pointer; pointer-events: auto; }
 #teamBuilderView.edit-mode .tb-tab-actions { display: flex; }
 #teamBuilderView.edit-mode .tb-move-btn--empty {
@@ -590,6 +589,52 @@
 .tb-ability-btn--filled:hover {
     background: rgba(124, 111, 232, 0.18);
     border-color: var(--accent);
+}
+
+.tb-pokemon-picker-panel {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.tb-pokemon-picker-panel.visible { display: flex; }
+
+.tb-pokemon-picker-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tb-pokemon-picker-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.tb-pokemon-picker-sugg {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.tb-pokemon-picker-sugg .suggestion-item {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tb-pokemon-picker-sugg .suggestion-item:last-child {
+    border-bottom: none;
 }
 
 /* Floating ability picker */

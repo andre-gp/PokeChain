@@ -112,9 +112,17 @@ function reorderTeams(fromIndex, toIndex) {
 
 let teamBuilderOpen = false;
 let tbEditMode = false;
-let tbMoveSearchState = null; // { teamId, slotIndex, moveIndex }
-let tbDragState = null;       // { teamId, fromIndex }
+let tbMoveSearchState = null;     // { teamId, slotIndex, moveIndex }
+let tbPokemonPickerState = null;  // { teamId, slotIndex }
+let tbDragState = null;           // { teamId, fromIndex }
 let tbTabDragState = null;    // { fromIndex }
+
+function updateTeamBuilderHash() {
+    const teams = loadTeams();
+    const idx = teams.findIndex(t => t.id === activeTeamId);
+    const hash = 'team-builder/' + Math.max(0, idx);
+    if (window.location.hash !== '#' + hash) window.location.hash = hash;
+}
 
 function toggleTeamBuilder() {
     if (teamBuilderOpen) closeTeamBuilder(); else openTeamBuilder();
@@ -122,7 +130,6 @@ function toggleTeamBuilder() {
 function openTeamBuilder() {
     teamBuilderOpen = true;
     tbEditMode = false;
-    if (window.location.hash !== '#team-builder') window.location.hash = 'team-builder';
     document.querySelector('.search-wrapper').style.display = 'none';
     document.getElementById('errorMsg').style.display = 'none';
     document.getElementById('results').style.display = 'none';
@@ -138,22 +145,23 @@ function openTeamBuilder() {
     } else if (!activeTeamId || !teams.find(t => t.id === activeTeamId)) {
         activeTeamId = teams[0].id;
     }
+    updateTeamBuilderHash();
     renderTeamBuilder();
 }
 function closeTeamBuilder() {
     teamBuilderOpen = false;
-    if (window.location.hash === '#team-builder') window.location.hash = '';
+    if (window.location.hash.startsWith('#team-builder')) window.location.hash = '';
     document.getElementById('teamBuilderView').style.display = 'none';
     document.querySelector('.search-wrapper').style.display = '';
     document.getElementById('errorMsg').style.display = '';
     document.getElementById('results').style.display = '';
     document.getElementById('teamBuilderBtn').classList.remove('active');
-    document.removeEventListener('click', dismissTbSuggestions);
+    closePokemonPicker();
     closeAbilityPicker();
 }
 function toggleTbEditMode() {
     tbEditMode = !tbEditMode;
-    if (!tbEditMode) { closeTbMoveSearch(); closeAbilityPicker(); }
+    if (!tbEditMode) { closeTbMoveSearch(); closePokemonPicker(); closeAbilityPicker(); }
     document.getElementById('teamBuilderView').classList.toggle('edit-mode', tbEditMode);
     document.getElementById('tbEditModeBtn').classList.toggle('active', tbEditMode);
     // Re-render tabs to show/hide delete button and rename handler
@@ -181,6 +189,7 @@ function createNewTeam() {
     const newTeam = createTeamRecord('Team ' + (teams.length + 1));
     saveTeam(newTeam);
     activeTeamId = newTeam.id;
+    updateTeamBuilderHash();
     renderTeamBuilder();
 }
 
@@ -196,27 +205,8 @@ function renderTeamBuilder() {
         bodyEl.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:40px;">No team selected.</p>';
         return;
     }
-    bodyEl.innerHTML = `
-        <div class="tb-search-row">
-            <div class="tb-search-wrapper">
-                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input type="text" class="tb-search-input" id="tbPokemonSearch"
-                    placeholder="Search Pokémon to add..."
-                    autocomplete="off" spellcheck="false"
-                    oninput="onTbPokemonInput(event)"
-                    onkeydown="onTbPokemonKeydown(event)">
-                <div class="suggestions tb-suggestions" id="tbSuggestions"></div>
-            </div>
-        </div>
-        <div class="tb-grid" id="tbGrid"></div>
-    `;
+    bodyEl.innerHTML = `<div class="tb-grid" id="tbGrid"></div>`;
     renderAllSlots(team);
-
-    // Dismiss tb suggestions on outside click (idempotent: remove before re-adding)
-    document.removeEventListener('click', dismissTbSuggestions);
-    document.addEventListener('click', dismissTbSuggestions);
 }
 
 function renderTeamBuilderTabs() {
@@ -280,16 +270,11 @@ function renderAllSlots(team) {
 
 function renderEmptySlot(teamId, slotIndex) {
     return `
-        <div class="tb-empty-slot" onclick="focusTbSearch()">
+        <div class="tb-empty-slot" onclick="openPokemonPicker(this, '${teamId}', ${slotIndex})">
             <div class="tb-empty-icon">+</div>
             <div class="tb-empty-label">Add Pokémon</div>
         </div>
     `;
-}
-
-function focusTbSearch() {
-    const input = document.getElementById('tbPokemonSearch');
-    if (input) input.focus();
 }
 
 function renderCompactCard(pName, pId, pSprite, pTypes, stats = []) {
@@ -489,6 +474,7 @@ function onTbTabDrop(event, toIndex) {
     });
     if (fromIndex === toIndex) return;
     reorderTeams(fromIndex, toIndex);
+    updateTeamBuilderHash();
     renderTeamBuilderTabs();
 }
 
@@ -753,19 +739,80 @@ async function wireAbilityTooltip(teamId, slotIndex) {
 }
 
 // ============================================================
-// Team Builder — Pokémon Search
 // ============================================================
 
-function onTbPokemonInput(event) {
-    const val = event.target.value.trim().toLowerCase();
-    const suggDiv = document.getElementById('tbSuggestions');
+function ensurePokemonPickerPanel() {
+    if (document.getElementById('tbPokemonPickerPanel')) return;
+    const panel = document.createElement('div');
+    panel.id = 'tbPokemonPickerPanel';
+    panel.className = 'tb-pokemon-picker-panel';
+    panel.innerHTML = `
+        <div class="tb-pokemon-picker-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text-secondary)">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="tbPokemonPickerInput" class="tb-pokemon-picker-input"
+                placeholder="Search Pokémon..." autocomplete="off" spellcheck="false">
+        </div>
+        <div id="tbPokemonPickerSugg" class="tb-pokemon-picker-sugg"></div>
+    `;
+    document.body.appendChild(panel);
+    const input = panel.querySelector('#tbPokemonPickerInput');
+    input.addEventListener('input', () => showPokemonPickerSuggestions(input.value.trim().toLowerCase()));
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { e.preventDefault(); closePokemonPicker(); }
+        else if (e.key === 'Enter') {
+            e.preventDefault();
+            const val = input.value.trim().toLowerCase().replace(/\s+/g, '-');
+            if (val && tbPokemonPickerState) addPokemonToSlot(tbPokemonPickerState.teamId, tbPokemonPickerState.slotIndex, val);
+        }
+    });
+}
+
+function openPokemonPicker(triggerEl, teamId, slotIndex) {
+    ensurePokemonPickerPanel();
+    closePokemonPicker();
+    tbPokemonPickerState = { teamId, slotIndex };
+
+    const panel = document.getElementById('tbPokemonPickerPanel');
+    const input = document.getElementById('tbPokemonPickerInput');
+    const suggDiv = document.getElementById('tbPokemonPickerSugg');
+
+    input.value = '';
+    suggDiv.innerHTML = '';
+
+    const slotEl = triggerEl.closest('.tb-slot') || triggerEl;
+    const rect = slotEl.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = rect.top + 'px';
+    panel.style.width = rect.width + 'px';
+    panel.classList.add('visible');
+
+    input.focus();
+    setTimeout(() => document.addEventListener('click', onPokemonPickerOutsideClick), 0);
+}
+
+function onPokemonPickerOutsideClick(e) {
+    const panel = document.getElementById('tbPokemonPickerPanel');
+    if (panel && !panel.contains(e.target)) closePokemonPicker();
+}
+
+function closePokemonPicker() {
+    const panel = document.getElementById('tbPokemonPickerPanel');
+    if (panel) panel.classList.remove('visible');
+    tbPokemonPickerState = null;
+    document.removeEventListener('click', onPokemonPickerOutsideClick);
+}
+
+function showPokemonPickerSuggestions(query) {
+    const suggDiv = document.getElementById('tbPokemonPickerSugg');
     if (!suggDiv) return;
-    if (!val || val.length < 2 || allPokemonNames.length === 0 || !autocompleteEnabled) {
-        suggDiv.classList.remove('visible');
+    if (!query || query.length < 2 || allPokemonNames.length === 0) {
+        suggDiv.innerHTML = '';
         return;
     }
-    const matches = allPokemonNames.filter(p => p.name.includes(val)).slice(0, 6);
-    if (matches.length === 0) { suggDiv.classList.remove('visible'); return; }
+    const matches = allPokemonNames.filter(p => p.name.includes(query)).slice(0, 8);
+    if (matches.length === 0) { suggDiv.innerHTML = ''; return; }
     suggDiv.innerHTML = matches.map(p => `
         <div class="suggestion-item" data-name="${p.name}">
             <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" alt="" loading="lazy">
@@ -774,55 +821,18 @@ function onTbPokemonInput(event) {
         </div>
     `).join('');
     suggDiv.querySelectorAll('.suggestion-item').forEach(item => {
-        item.addEventListener('click', () => {
-            addPokemonToTeam(activeTeamId, item.dataset.name);
-            suggDiv.classList.remove('visible');
-            const input = document.getElementById('tbPokemonSearch');
-            if (input) input.value = '';
+        item.addEventListener('mousedown', e => {
+            e.preventDefault();
+            if (tbPokemonPickerState) addPokemonToSlot(tbPokemonPickerState.teamId, tbPokemonPickerState.slotIndex, item.dataset.name);
         });
     });
-    suggDiv.classList.add('visible');
 }
 
-function onTbPokemonKeydown(event) {
-    if (event.key === 'Escape') {
-        const suggDiv = document.getElementById('tbSuggestions');
-        if (suggDiv) suggDiv.classList.remove('visible');
-    } else if (event.key === 'Enter') {
-        event.preventDefault();
-        const val = event.target.value.trim().toLowerCase().replace(/\s+/g, '-');
-        if (!val) return;
-        const suggDiv = document.getElementById('tbSuggestions');
-        if (suggDiv) suggDiv.classList.remove('visible');
-        event.target.value = '';
-        addPokemonToTeam(activeTeamId, val);
-    }
-}
-
-function dismissTbSuggestions(event) {
-    const suggDiv = document.getElementById('tbSuggestions');
-    const wrapper = document.querySelector('.tb-search-wrapper');
-    if (suggDiv && wrapper && !wrapper.contains(event.target)) {
-        suggDiv.classList.remove('visible');
-    }
-}
-
-async function addPokemonToTeam(teamId, pokemonName) {
-    const team = getTeam(teamId);
-    if (!team) return;
-    const emptyIdx = team.pokemon.findIndex(s => s === null);
-    if (emptyIdx === -1) {
-        const input = document.getElementById('tbPokemonSearch');
-        if (input) {
-            const original = input.placeholder;
-            input.placeholder = 'Team is full! (6/6)';
-            setTimeout(() => { if (input) input.placeholder = original; }, 2500);
-        }
-        return;
-    }
-    setPokemonInSlot(teamId, emptyIdx, pokemonName);
+async function addPokemonToSlot(teamId, slotIndex, pokemonName) {
+    closePokemonPicker();
+    setPokemonInSlot(teamId, slotIndex, pokemonName);
     const updatedTeam = getTeam(teamId);
-    await loadSlotCard(teamId, emptyIdx, updatedTeam.pokemon[emptyIdx]);
+    await loadSlotCard(teamId, slotIndex, updatedTeam.pokemon[slotIndex]);
 }
 
 function removeFromTeam(teamId, slotIndex) {
@@ -840,6 +850,7 @@ function removeFromTeam(teamId, slotIndex) {
 
 function switchTeam(teamId) {
     activeTeamId = teamId;
+    updateTeamBuilderHash();
     renderTeamBuilder();
 }
 
@@ -880,5 +891,6 @@ function confirmDeleteTeam(teamId) {
     deleteTeam(teamId);
     const remaining = loadTeams();
     activeTeamId = remaining[0]?.id || null;
+    updateTeamBuilderHash();
     renderTeamBuilder();
 }

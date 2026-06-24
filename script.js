@@ -402,8 +402,23 @@ function navigateTo(name) {
 // Handle Route Change
 function handleRoute() {
     const hash = window.location.hash.replace('#', '');
-    if (hash === 'team-builder') {
+    if (hash === 'team-builder' || hash.startsWith('team-builder/')) {
+        if (hash.startsWith('team-builder/')) {
+            const rawIdx = parseInt(hash.slice('team-builder/'.length), 10);
+            if (!isNaN(rawIdx)) {
+                const teams = loadTeams();
+                if (teams.length > 0) {
+                    const clamped = Math.max(0, Math.min(rawIdx, teams.length - 1));
+                    activeTeamId = teams[clamped].id;
+                    if (clamped !== rawIdx) {
+                        window.location.hash = 'team-builder/' + clamped;
+                        return;
+                    }
+                }
+            }
+        }
         if (!teamBuilderOpen) openTeamBuilder();
+        else renderTeamBuilder();
     } else if (hash) {
         if (teamBuilderOpen) closeTeamBuilder();
         searchInput.value = hash;
