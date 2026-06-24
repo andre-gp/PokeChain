@@ -98,6 +98,13 @@ function reorderPokemonSlots(teamId, fromIndex, toIndex) {
     team.pokemon[toIndex] = temp;
     saveTeams(teams);
 }
+function reorderTeams(fromIndex, toIndex) {
+    const teams = loadTeams();
+    if (fromIndex === toIndex) return;
+    const [moved] = teams.splice(fromIndex, 1);
+    teams.splice(toIndex, 0, moved);
+    saveTeams(teams);
+}
 
 // ============================================================
 // Team Builder — Open / Close
@@ -107,6 +114,7 @@ let teamBuilderOpen = false;
 let tbEditMode = false;
 let tbMoveSearchState = null; // { teamId, slotIndex, moveIndex }
 let tbDragState = null;       // { teamId, fromIndex }
+let tbTabDragState = null;    // { fromIndex }
 
 function toggleTeamBuilder() {
     if (teamBuilderOpen) closeTeamBuilder(); else openTeamBuilder();
@@ -215,16 +223,38 @@ function renderTeamBuilderTabs() {
     const teams = loadTeams();
     const tabsEl = document.getElementById('teamBuilderTabs');
     if (!tabsEl) return;
-    tabsEl.innerHTML = teams.map(team => `
+    tabsEl.innerHTML = teams.map((team, idx) => `
         <div class="tb-tab ${team.id === activeTeamId ? 'active' : ''}"
-             onclick="switchTeam('${team.id}')">
+             draggable="true"
+             onclick="switchTeam('${team.id}')"
+             ondragstart="onTbTabDragStart(event, ${idx})"
+             ondragover="onTbTabDragOver(event, ${idx})"
+             ondragleave="onTbTabDragLeave(event)"
+             ondrop="onTbTabDrop(event, ${idx})"
+             ondragend="onTbTabDragEnd()">
             <span class="tb-tab-name"
                   id="tbTabName-${team.id}"
-                  ${tbEditMode ? `ondblclick="startRenameTeam('${team.id}')" title="Double-click to rename"` : ''}
                   >${escapeHtml(team.name)}</span>
-            ${tbEditMode ? `<button class="tb-tab-delete"
-                    onclick="event.stopPropagation(); confirmDeleteTeam('${team.id}')"
-                    title="Delete team">&times;</button>` : ''}
+            <div class="tb-tab-actions">
+                <button class="tb-tab-rename"
+                        onclick="event.stopPropagation(); startRenameTeam('${team.id}')"
+                        title="Rename team">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </button>
+                <button class="tb-tab-delete"
+                        onclick="event.stopPropagation(); confirmDeleteTeam('${team.id}')"
+                        title="Delete team">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                </button>
+            </div>
         </div>
     `).join('');
 }
@@ -420,6 +450,52 @@ function onTbSlotDragEnd() {
     tbDragState = null;
     document.querySelectorAll('.tb-slot--dragging, .tb-slot--drag-over').forEach(el => {
         el.classList.remove('tb-slot--dragging', 'tb-slot--drag-over');
+    });
+}
+
+// ============================================================
+// Team Builder — Tab Drag-and-Drop Reordering
+// ============================================================
+
+function onTbTabDragStart(event, fromIndex) {
+    if (!tbEditMode) { event.preventDefault(); return; }
+    tbTabDragState = { fromIndex };
+    event.dataTransfer.effectAllowed = 'move';
+    event.currentTarget.classList.add('tb-tab--dragging');
+}
+
+function onTbTabDragOver(event, toIndex) {
+    if (!tbEditMode || !tbTabDragState) return;
+    if (tbTabDragState.fromIndex === toIndex) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.tb-tab--drag-over').forEach(el => el.classList.remove('tb-tab--drag-over'));
+    event.currentTarget.classList.add('tb-tab--drag-over');
+}
+
+function onTbTabDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+        event.currentTarget.classList.remove('tb-tab--drag-over');
+    }
+}
+
+function onTbTabDrop(event, toIndex) {
+    if (!tbEditMode || !tbTabDragState) return;
+    event.preventDefault();
+    const fromIndex = tbTabDragState.fromIndex;
+    tbTabDragState = null;
+    document.querySelectorAll('.tb-tab--dragging, .tb-tab--drag-over').forEach(el => {
+        el.classList.remove('tb-tab--dragging', 'tb-tab--drag-over');
+    });
+    if (fromIndex === toIndex) return;
+    reorderTeams(fromIndex, toIndex);
+    renderTeamBuilderTabs();
+}
+
+function onTbTabDragEnd() {
+    tbTabDragState = null;
+    document.querySelectorAll('.tb-tab--dragging, .tb-tab--drag-over').forEach(el => {
+        el.classList.remove('tb-tab--dragging', 'tb-tab--drag-over');
     });
 }
 

@@ -42,8 +42,9 @@
 
 .tb-tab {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     padding: 6px 10px;
     border-radius: 8px;
     cursor: pointer;
@@ -83,21 +84,28 @@
     padding: 0 2px;
 }
 
+.tb-tab-actions {
+    display: none;
+    gap: 4px;
+}
+
+.tb-tab-rename,
 .tb-tab-delete {
     background: none;
     border: none;
-    color: var(--text-secondary);
     cursor: pointer;
-    font-size: 1rem;
-    line-height: 1;
-    padding: 0 2px;
+    padding: 2px 3px;
     border-radius: 4px;
-    transition: color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    transition: color 0.15s, opacity 0.15s;
 }
 
-.tb-tab-delete:hover {
-    color: var(--danger);
-}
+.tb-tab-rename:hover { color: var(--accent); opacity: 1; }
+.tb-tab-delete:hover { color: var(--danger); opacity: 1; }
 
 /* Body */
 #teamBuilderBody {
@@ -383,7 +391,6 @@
 /* View mode defaults (no .edit-mode class = view mode) */
 .tb-slot-remove { display: none; }
 .tb-search-row  { display: none; }
-.tb-tab-delete  { display: none; }
 .tb-empty-slot  { display: none; cursor: default; pointer-events: none; }
 #teamBuilderView:not(.edit-mode) .tb-slot:has(.tb-empty-slot) { display: none; }
 
@@ -394,12 +401,26 @@
 /* Edit mode overrides */
 #teamBuilderView.edit-mode .tb-slot-remove  { display: flex; }
 #teamBuilderView.edit-mode .tb-search-row   { display: block; }
-#teamBuilderView.edit-mode .tb-tab-delete   { display: inline-flex; }
 #teamBuilderView.edit-mode .tb-empty-slot   { display: flex; cursor: pointer; pointer-events: auto; }
+#teamBuilderView.edit-mode .tb-tab-actions { display: flex; }
 #teamBuilderView.edit-mode .tb-move-btn--empty {
     opacity: 1;
     pointer-events: auto;
     border-style: dashed;
+}
+
+/* Tab drag-and-drop reordering */
+#teamBuilderView.edit-mode .tb-tab { cursor: grab; }
+#teamBuilderView.edit-mode .tb-tab:active { cursor: grabbing; }
+
+.tb-tab--dragging {
+    opacity: 0.4;
+    border-style: dashed !important;
+}
+
+.tb-tab--drag-over {
+    border-color: var(--accent) !important;
+    background: rgba(124, 111, 232, 0.1);
 }
 
 /* Pencil toggle button in tabs row */
