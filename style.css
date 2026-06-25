@@ -631,6 +631,49 @@ body.always-show-details .btn-toggle-details { display: none; }
             transform: scale(0.98);
         }
 
+/* Game-dependent evolutions: alternate per-game methods under a collapsible section */
+.evo-card .evo-other-games {
+    margin-top: 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 10px;
+    background: rgba(124, 111, 232, 0.04);
+    padding: 4px 10px;
+}
+
+    .evo-card .evo-other-games > summary {
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        padding: 6px 2px;
+        user-select: none;
+    }
+
+        .evo-card .evo-other-games > summary:hover {
+            color: var(--accent);
+        }
+
+    .evo-card .evo-other-games[open] > summary {
+        margin-bottom: 8px;
+    }
+
+    /* Stack the per-game method boxes inside the disclosure */
+    .evo-card .evo-other-games .spoiler-box + .spoiler-box {
+        margin-top: 8px;
+    }
+
+/* Localized game label shown above a method title (e.g. "Diamond / Pearl") */
+.evo-card .spoiler-box .evo-game-label {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(124, 111, 232, 0.14);
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin-bottom: 6px;
+}
+
 .evo-target-container {
     display: inline-block;
     opacity: 0;

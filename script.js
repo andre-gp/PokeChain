@@ -23,11 +23,13 @@ const API_FORMS = 'https://pokeapi.co/api/v2/pokemon-form/';
 const API_GENDER = 'https://pokeapi.co/api/v2/gender/';
 const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
 const API_NATURE = 'https://pokeapi.co/api/v2/nature/';
+const API_VERSION_GROUP = 'https://pokeapi.co/api/v2/version-group/';
+const API_VERSION = 'https://pokeapi.co/api/v2/version/';
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v2.9',
+    version: 'v3.0',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -263,6 +265,11 @@ function stripToOnlyNames(data) {
         names: data.names
     }
 }
+
+const stripVersionGroup = (data) => ({
+    name: data.name,
+    versions: data.versions
+});
 
 const stripAbility = (data) => ({
     id: data.id,
@@ -872,7 +879,22 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
             loadDetailsPanel(p);
         });
     }
+    await revealAndScrollToForm(speciesData, pokemonData);
     if (DEBUG) console.log(`[TOTAL] Search → render: ${(performance.now() - searchStartTime).toFixed(1)} ms`);
+}
+
+// When the searched/linked Pokémon is a non-default form, reveal the hidden forms and scroll
+// to its card so deep-linking (e.g. #lycanroc-midnight from an evolution branch) lands on it.
+async function revealAndScrollToForm(speciesData, pokemonData) {
+    const variety = speciesData.varieties.find(v => v.pokemon.name === pokemonData.name);
+    if (!variety || variety.is_default) return; // default variety is already shown on top
+
+    let card = document.querySelector(`[data-variety="${pokemonData.name}"]`);
+    if (!card && pendingFormsData) {
+        await showAlternativeForms();
+        card = document.querySelector(`[data-variety="${pokemonData.name}"]`);
+    }
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function showAlternativeForms() {
@@ -941,7 +963,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
     const panelBtnId = `details-btn-${pName}-${pId}`;
     const encodedDetails = encodeURIComponent(JSON.stringify({ stats, abilities }));
     return `
-                <div class="result-card" id="result-card" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
+                <div class="result-card" id="result-card" data-variety="${pName}" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
                     <div class="pokemon-header">
                         <img class="pokemon-sprite" src="${pSprite}" alt="${pName}">
                         <div class="pokemon-info">
@@ -1028,18 +1050,61 @@ async function renderEvolutions(evoInfo, pName) {
         return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
     }
 
-    const branches = await Promise.all(
-        evoInfo.map(async (evoTarget, idx) => {
-            const targetName = evoTarget.species.name;
-            const methodGroups = evoTarget.evolution_details;
+    // Split each evolves_to species node into one render target per evolved_form.
+    const renderTargets = [];
+    for (const node of evoInfo) {
+        const byForm = new Map();
+        for (const d of node.evolution_details) {
+            const key = d.evolved_form?.name ?? null;
+            if (!byForm.has(key)) byForm.set(key, []);
+            byForm.get(key).push(d);
+        }
+        for (const [formName, details] of byForm) {
+            renderTargets.push({ navName: formName ?? node.species.name, details });
+        }
+    }
 
-            const spoilerBoxes = (
+    const branches = await Promise.all(
+        renderTargets.map(async (target, idx) => {
+            const targetName = target.navName;
+            const methodGroups = groupMethodsByGame(target.details);
+
+            let current = methodGroups.filter(g => g.isDefault);
+            let others = methodGroups.filter(g => !g.isDefault);
+            if (current.length === 0) {
+                // No method is flagged default: treat the newest as current, rest as other games.
+                const sorted = [...methodGroups].sort(
+                    (a, b) => Math.max(...b.versionGroups) - Math.max(...a.versionGroups)
+                );
+                current = sorted.slice(0, 1);
+                others = sorted.slice(1);
+            }
+            others.sort((a, b) => Math.min(...a.versionGroups) - Math.min(...b.versionGroups));
+
+            const currentBoxes = (
                 await Promise.all(
-                    methodGroups.map((group, boxIdx) =>
-                        renderMethodBox(targetName, group, boxIdx, idx, pName)
-                    )
+                    current.map((group, boxIdx) => renderMethodBox(targetName, group.detail, boxIdx, idx, pName))
                 )
             ).join('');
+
+            let spoilerBoxes = currentBoxes;
+            if (others.length > 0) {
+                const otherBoxes = (
+                    await Promise.all(
+                        others.map(async (group, boxIdx) => {
+                            const labels = await Promise.all(group.versionGroups.map(getVersionGroupLabel));
+                            return renderMethodBox(targetName, group.detail, current.length + boxIdx, idx, pName, labels.join(', '));
+                        })
+                    )
+                ).join('');
+
+                spoilerBoxes += `
+                    <details class="evo-other-games">
+                        <summary>Other games (${others.length})</summary>
+                        ${otherBoxes}
+                    </details>
+                `;
+            }
 
             const evoId = idx + pName + targetName;
             return `
@@ -1061,38 +1126,45 @@ async function renderEvolutions(evoInfo, pName) {
                         </div>
                     </div>
                 </div>
-                ${idx < evoInfo.length - 1 ? '<div class="evo-divider"></div>' : ''}
+                ${idx < renderTargets.length - 1 ? '<div class="evo-divider"></div>' : ''}
             `;
         })
     );
     return branches.join('');
 }
 
-// Group evolution details by unique method signature for multiple trigger boxes
-function groupEvolutionMethods(details) {
+// Resolve a version_group id to a localized "Game / Game" label (all fetches cached).
+async function getVersionGroupLabel(versionGroupId) {
+    const vg = await cachedFetch(API_VERSION_GROUP + versionGroupId, stripVersionGroup);
+    const names = await Promise.all(
+        vg.versions.map(v => cachedFetchNameInCurrentLanguage(v.url))
+    );
+    return names.join(' / ');
+}
+
+// Group an evolution target's details by method signature, ignoring version_group/is_default.
+function groupMethodsByGame(details) {
     const groups = new Map();
 
     details.forEach(d => {
-        // Create a unique key based on trigger + key distinguishing fields
-        const key = `${d.trigger}|${d.item || ''}|${d.location || ''}|${d.time_of_day || ''}|${d.min_level || ''}`;
+        const { version_group, is_default, ...method } = d;
+        const signature = JSON.stringify(method);
 
-        if (!groups.has(key)) {
-            groups.set(key, {
-                trigger: d.trigger,
-                item: d.item,
-                location: d.location,
-                time_of_day: d.time_of_day,
-                min_level: d.min_level,
-                details: []
-            });
+        if (!groups.has(signature)) {
+            groups.set(signature, { detail: d, versionGroups: [], isDefault: false });
         }
-        groups.get(key).details.push(d);
+        const group = groups.get(signature);
+        if (version_group != null) group.versionGroups.push(version_group);
+        if (is_default) {
+            group.isDefault = true;
+            group.detail = d;
+        }
     });
 
     return Array.from(groups.values());
 }
 
-async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, pName) {
+async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, pName, gameLabel = '') {
     const methodSummary = await getMethodSummary([methodGroup]);
 
     const id = `${pName}-${targetEvolution}-${parentIdx}-${boxIdx}`;
@@ -1101,7 +1173,10 @@ async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, 
 
 
     const filteredMethodGroup = Object.fromEntries(
-        Object.entries(methodGroup).filter(([_, value]) =>
+        Object.entries(methodGroup).filter(([key, value]) =>
+            key !== 'version_group' &&
+            key !== 'is_default' &&
+            key !== 'evolved_form' &&
             value !== null &&
             value !== undefined &&
             !(typeof value === 'boolean' && value === false) &&
@@ -1111,8 +1186,13 @@ async function renderMethodBox(targetEvolution, methodGroup, boxIdx, parentIdx, 
 
     const encodedMethodGroup = encodeURIComponent(JSON.stringify(filteredMethodGroup));
 
+    const gameLabelHtml = gameLabel
+        ? `<span class="evo-game-label">${gameLabel}</span>`
+        : '';
+
     return `
         <div class="spoiler-box">
+            ${gameLabelHtml}
             <span class="method-title">Method: ${methodSummary}</span>
 
             <div class="spoiler-details" id="${spoilerId}" data-method-group="${encodedMethodGroup}" hidden></div>
@@ -1283,7 +1363,8 @@ async function getMethodSummary(details) {
 
         // 2. Any other field has a meaningful value
         for (const key in details) {
-            if (key === 'trigger' || key === 'min_level' || key === 'base_form') continue;
+            if (key === 'trigger' || key === 'min_level' || key === 'base_form'
+                || key === 'version_group' || key === 'is_default' || key === 'evolved_form') continue;
 
             const val = details[key];
             if (val === null || val === undefined || val === '') continue;
@@ -1301,7 +1382,8 @@ async function getMethodSummary(details) {
 
     function isTradeConditional(details) {
         for (const key in details) {
-            if (key === 'trigger' || key === 'base_form') continue;
+            if (key === 'trigger' || key === 'base_form'
+                || key === 'version_group' || key === 'is_default' || key === 'evolved_form') continue;
 
             const val = details[key];
             if (val === null || val === undefined || val === '') continue;
@@ -1432,6 +1514,11 @@ async function getMethodDetails(details) {
                 break;
             case 'used_move':
                 lines.push(`<strong>Move:</strong> ${await cachedFetchNameInCurrentLanguage(value.url)}`);
+                break;
+            case 'version_group':
+            case 'is_default':
+            case 'evolved_form':
+                // Internal grouping fields — never shown in the method details
                 break;
             default:
                 if (value?.name) {
