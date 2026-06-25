@@ -65,7 +65,7 @@ function setPokemonInSlot(teamId, slotIndex, pokemonName) {
     const teams = loadTeams();
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    team.pokemon[slotIndex] = { name: pokemonName, moves: [null, null, null, null], ability: null };
+    team.pokemon[slotIndex] = { name: pokemonName, moves: [null, null, null, null], ability: null, nature: null };
     saveTeams(teams);
 }
 function removePokemonFromSlot(teamId, slotIndex) {
@@ -87,6 +87,13 @@ function setAbilityInSlot(teamId, slotIndex, abilityName) {
     const team = teams.find(t => t.id === teamId);
     if (!team || !team.pokemon[slotIndex]) return;
     team.pokemon[slotIndex].ability = abilityName || null;
+    saveTeams(teams);
+}
+function setNatureInSlot(teamId, slotIndex, natureName) {
+    const teams = loadTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team || !team.pokemon[slotIndex]) return;
+    team.pokemon[slotIndex].nature = natureName || null;
     saveTeams(teams);
 }
 function reorderPokemonSlots(teamId, fromIndex, toIndex) {
@@ -158,10 +165,11 @@ function closeTeamBuilder() {
     document.getElementById('teamBuilderBtn').classList.remove('active');
     closePokemonPicker();
     closeAbilityPicker();
+    closeNaturePicker();
 }
 function toggleTbEditMode() {
     tbEditMode = !tbEditMode;
-    if (!tbEditMode) { closeTbMoveSearch(); closePokemonPicker(); closeAbilityPicker(); }
+    if (!tbEditMode) { closeTbMoveSearch(); closePokemonPicker(); closeAbilityPicker(); closeNaturePicker(); }
     document.getElementById('teamBuilderView').classList.toggle('edit-mode', tbEditMode);
     document.getElementById('tbEditModeBtn').classList.toggle('active', tbEditMode);
     // Re-render tabs to show/hide delete button and rename handler
@@ -354,11 +362,15 @@ async function loadSlotCard(teamId, slotIndex, slotData) {
                     onclick="removeFromTeam('${teamId}', ${slotIndex})"
                     title="Remove Pokémon">&times;</button>
                 ${cardHtml}
-                ${renderAbilityRow(teamId, slotIndex, slotData, pokemonData.abilities)}
+                <div class="tb-attr-row">
+                    ${renderAbilityRow(teamId, slotIndex, slotData, pokemonData.abilities)}
+                    ${renderNatureRow(teamId, slotIndex, slotData)}
+                </div>
                 ${renderMoveButtons(teamId, slotIndex, slotData.moves)}
             </div>
         `;
         wireAbilityTooltip(teamId, slotIndex);
+        wireNatureTooltip(teamId, slotIndex);
     } catch (err) {
         console.error(err);
         container.style.borderLeft = '';
@@ -638,6 +650,21 @@ function renderAbilityRow(teamId, slotIndex, slotData, abilities) {
     </div>`;
 }
 
+function renderNatureRow(teamId, slotIndex, slotData) {
+    const nature = slotData.nature || null;
+    if (nature) {
+        const displayName = nature.charAt(0).toUpperCase() + nature.slice(1);
+        return `<div class="tb-nature-row" id="tbNatureRow-${teamId}-${slotIndex}">
+            <button class="tb-nature-btn tb-nature-btn--filled"
+                onclick="onNatureButtonClick(this, '${teamId}', ${slotIndex})">${displayName}</button>
+        </div>`;
+    }
+    return `<div class="tb-nature-row" id="tbNatureRow-${teamId}-${slotIndex}">
+        <button class="tb-nature-btn tb-nature-btn--empty"
+            onclick="onNatureButtonClick(this, '${teamId}', ${slotIndex})">+ Nature</button>
+    </div>`;
+}
+
 // ============================================================
 // Team Builder — Ability Picker
 // ============================================================
@@ -736,6 +763,133 @@ async function wireAbilityTooltip(teamId, slotIndex) {
         btn.addEventListener('focus',      () => abilityTooltip.show(btn));
         btn.addEventListener('blur',       () => abilityTooltip.hide());
     } catch {}
+}
+
+async function wireNatureTooltip(teamId, slotIndex) {
+    const team = getTeam(teamId);
+    const natureName = team?.pokemon[slotIndex]?.nature;
+    if (!natureName) return;
+    const btn = document.querySelector(`#tbNatureRow-${teamId}-${slotIndex} .tb-nature-btn--filled`);
+    if (!btn) return;
+    try {
+        const natureData = await cachedFetch(API_NATURE + natureName, stripNature);
+        let tooltipText;
+        if (!natureData.increased_stat) {
+            tooltipText = 'No stat changes';
+        } else {
+            const [plusName, minusName] = await Promise.all([
+                cachedFetchNameInCurrentLanguage(natureData.increased_stat.url),
+                cachedFetchNameInCurrentLanguage(natureData.decreased_stat.url),
+            ]);
+            tooltipText = `+${plusName} / −${minusName}`;
+        }
+        btn.dataset.tooltip = tooltipText;
+        btn.tabIndex = 0;
+        btn.addEventListener('mouseenter', () => abilityTooltip.show(btn));
+        btn.addEventListener('mouseleave', () => abilityTooltip.hide());
+        btn.addEventListener('focus',      () => abilityTooltip.show(btn));
+        btn.addEventListener('blur',       () => abilityTooltip.hide());
+    } catch {}
+}
+
+// ============================================================
+// Team Builder — Nature Picker
+// ============================================================
+
+let tbNaturePickerState = null;
+let tbNatureDataCache = null;
+
+async function loadAllNatureData() {
+    if (tbNatureDataCache) return tbNatureDataCache;
+    const nameList = await cachedFetch(API_NATURE + '?limit=100', stripNatureList);
+    const natures = await Promise.all(nameList.map(n => cachedFetch(API_NATURE + n, stripNature)));
+    tbNatureDataCache = natures;
+    return natures;
+}
+
+function ensureNaturePickerPanel() {
+    if (document.getElementById('tbNaturePickerPanel')) return;
+    const panel = document.createElement('div');
+    panel.id = 'tbNaturePickerPanel';
+    panel.className = 'tb-nature-picker';
+    panel.innerHTML = `<div id="tbNaturePickerList" class="tb-nature-picker-list"></div>`;
+    document.body.appendChild(panel);
+}
+
+function onNatureButtonClick(btnEl, teamId, slotIndex) {
+    if (!tbEditMode) return;
+    openNaturePicker(btnEl, teamId, slotIndex);
+}
+
+async function openNaturePicker(btnEl, teamId, slotIndex) {
+    ensureNaturePickerPanel();
+    closeNaturePicker();
+    tbNaturePickerState = { teamId, slotIndex };
+
+    const panel = document.getElementById('tbNaturePickerPanel');
+    const listEl = document.getElementById('tbNaturePickerList');
+
+    const rect = btnEl.getBoundingClientRect();
+    const panelW = 210;
+    let left = rect.left;
+    if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
+    if (left < 8) left = 8;
+    panel.style.left = left + 'px';
+    panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    panel.style.top = 'auto';
+    panel.classList.add('visible');
+
+    const currentNature = getTeam(teamId)?.pokemon[slotIndex]?.nature || null;
+    listEl.innerHTML = '<div class="tb-nature-loading"><div class="spinner" style="margin:0 auto"></div></div>';
+    setTimeout(() => document.addEventListener('click', onNaturePickerOutsideClick), 0);
+
+    try {
+        const natures = await loadAllNatureData();
+        const items = natures.map(n => {
+            const statHtml = buildNatureStatHtml(n);
+            const active = n.name === currentNature ? ' tb-nature-item--active' : '';
+            const displayName = n.name.charAt(0).toUpperCase() + n.name.slice(1);
+            return `<button class="tb-nature-item${active}" data-name="${n.name}">${displayName}${statHtml}</button>`;
+        });
+        if (currentNature) {
+            items.push(`<button class="tb-nature-item tb-nature-item--clear" data-name="">Clear</button>`);
+        }
+        listEl.innerHTML = items.join('');
+        listEl.querySelectorAll('.tb-nature-item').forEach(item => {
+            item.addEventListener('click', () => {
+                setNatureInSlot(teamId, slotIndex, item.dataset.name || null);
+                closeNaturePicker();
+                refreshNatureRow(teamId, slotIndex);
+            });
+        });
+    } catch {
+        listEl.innerHTML = '<div style="padding:12px;color:var(--danger);font-size:0.8rem;">Failed to load natures.</div>';
+    }
+}
+
+function onNaturePickerOutsideClick(e) {
+    const panel = document.getElementById('tbNaturePickerPanel');
+    if (panel && !panel.contains(e.target)) closeNaturePicker();
+}
+
+function closeNaturePicker() {
+    const panel = document.getElementById('tbNaturePickerPanel');
+    if (panel) panel.classList.remove('visible');
+    tbNaturePickerState = null;
+    document.removeEventListener('click', onNaturePickerOutsideClick);
+}
+
+async function refreshNatureRow(teamId, slotIndex) {
+    const rowEl = document.getElementById(`tbNatureRow-${teamId}-${slotIndex}`);
+    if (!rowEl) return;
+    const team = getTeam(teamId);
+    if (!team || !team.pokemon[slotIndex]) return;
+    const slotData = team.pokemon[slotIndex];
+    const natureData = slotData.nature
+        ? await cachedFetch(API_NATURE + slotData.nature, stripNature).catch(() => null)
+        : null;
+    rowEl.outerHTML = renderNatureRow(teamId, slotIndex, slotData);
+    wireNatureTooltip(teamId, slotIndex);
 }
 
 // ============================================================

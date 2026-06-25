@@ -22,6 +22,7 @@ const API_SPECIES = 'https://pokeapi.co/api/v2/pokemon-species/';
 const API_FORMS = 'https://pokeapi.co/api/v2/pokemon-form/';
 const API_GENDER = 'https://pokeapi.co/api/v2/gender/';
 const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
+const API_NATURE = 'https://pokeapi.co/api/v2/nature/';
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
@@ -267,6 +268,16 @@ const stripAbility = (data) => ({
     name: data.name,
     names: stripArrayToCurrentLanguageEntry(data.names),
     effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries)
+});
+
+const stripNatureList = (data) => data.results.map(r => r.name);
+
+const stripNature = (data) => ({
+    id: data.id,
+    name: data.name,
+    names: stripArrayToCurrentLanguageEntry(data.names),
+    increased_stat: data.increased_stat,
+    decreased_stat: data.decreased_stat,
 });
 
 function stripMove(data) {

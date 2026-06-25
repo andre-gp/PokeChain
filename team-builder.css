@@ -543,8 +543,9 @@
 
 /* Ability row */
 .tb-ability-row {
-    padding: 6px 12px 4px;
-    background: var(--bg-secondary);
+    flex: 1;
+    padding: 5px 8px 5px 12px;
+    border-right: 1px solid var(--border-color);
 }
 
 .tb-ability-btn {
@@ -710,6 +711,137 @@
 #teamBuilderView:not(.edit-mode) .tb-ability-btn--empty { display: none; }
 #teamBuilderView:not(.edit-mode) .tb-ability-row:has(.tb-ability-btn--empty) { display: none; }
 #teamBuilderView:not(.edit-mode) .tb-ability-btn--filled { cursor: default; }
+
+/* Ability + Nature side-by-side row */
+.tb-attr-row {
+    display: flex;
+    background: var(--bg-secondary);
+}
+
+/* Nature row */
+.tb-nature-row {
+    flex: 1;
+    padding: 5px 12px 5px 8px;
+}
+
+.tb-nature-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s;
+    text-transform: capitalize;
+    text-align: center;
+}
+
+.tb-nature-btn--empty {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-style: dashed;
+}
+
+.tb-nature-btn--empty:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    border-style: solid;
+}
+
+.tb-nature-btn--filled {
+    background: rgba(124, 111, 232, 0.08);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.tb-nature-btn--filled:hover {
+    background: rgba(124, 111, 232, 0.18);
+    border-color: var(--accent);
+}
+
+/* Floating nature picker */
+.tb-nature-picker {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    width: 210px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+
+.tb-nature-picker.visible {
+    display: block;
+}
+
+.tb-nature-picker-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.tb-nature-loading {
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.tb-nature-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    text-transform: capitalize;
+    transition: background 0.12s;
+    gap: 8px;
+}
+
+.tb-nature-item:last-child {
+    border-bottom: none;
+}
+
+.tb-nature-item:hover {
+    background: rgba(124, 111, 232, 0.1);
+}
+
+.tb-nature-item--active {
+    color: var(--accent);
+}
+
+.tb-nature-item--clear {
+    color: var(--danger, #dc3c3c);
+    font-size: 0.78rem;
+    text-transform: none;
+    justify-content: center;
+}
+
+.tb-nature-item--clear:hover {
+    background: rgba(220, 60, 60, 0.1);
+}
+
+/* View/Edit mode for nature */
+#teamBuilderView:not(.edit-mode) .tb-nature-btn--empty { display: none; }
+#teamBuilderView:not(.edit-mode) .tb-nature-row:has(.tb-nature-btn--empty) { display: none; }
+#teamBuilderView:not(.edit-mode) .tb-nature-btn--filled { cursor: default; }
 
 /* Responsive */
 @media (max-width: 600px) {
