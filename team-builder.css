@@ -853,6 +853,89 @@
 #teamBuilderView:not(.edit-mode) .tb-nature-row:has(.tb-nature-btn--empty) { display: none; }
 #teamBuilderView:not(.edit-mode) .tb-nature-btn--filled { cursor: default; }
 
+/* Save bar */
+.tb-save-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    margin-bottom: 16px;
+    background: color-mix(in srgb, var(--warning) 8%, var(--bg-secondary));
+    border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+    border-radius: 10px;
+    animation: fadeSlideUp 0.2s ease;
+}
+.tb-save-bar.visible {
+    display: flex;
+}
+.tb-unsaved-label {
+    font-size: 0.82rem;
+    color: var(--warning);
+    flex: 1;
+}
+.tb-save-bar-actions {
+    display: flex;
+    gap: 8px;
+}
+.tb-revert-btn {
+    font-size: 0.82rem;
+    padding: 5px 12px;
+    color: var(--danger) !important;
+    border-color: var(--danger) !important;
+}
+.tb-revert-btn:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent) !important;
+}
+.tb-save-btn {
+    font-size: 0.82rem;
+    padding: 5px 12px;
+    color: var(--success) !important;
+    border-color: var(--success) !important;
+}
+.tb-save-btn:hover {
+    background: color-mix(in srgb, var(--success) 12%, transparent) !important;
+}
+
+/* Confirm modal */
+.tb-confirm-modal-content {
+    max-width: 340px;
+    padding: 28px 24px 22px;
+    text-align: center;
+}
+.tb-confirm-message {
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin: 0 0 20px;
+}
+.tb-confirm-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.tb-confirm-cancel {
+    font-size: 0.85rem;
+    padding: 7px 16px;
+}
+.tb-confirm-save {
+    font-size: 0.85rem;
+    padding: 7px 16px;
+    color: var(--success) !important;
+    border-color: var(--success) !important;
+}
+.tb-confirm-save:hover {
+    background: color-mix(in srgb, var(--success) 12%, transparent) !important;
+}
+.tb-confirm-danger {
+    font-size: 0.85rem;
+    padding: 7px 16px;
+    color: var(--danger) !important;
+    border-color: var(--danger) !important;
+}
+.tb-confirm-danger:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent) !important;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
     .tb-grid {

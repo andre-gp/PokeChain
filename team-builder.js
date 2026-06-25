@@ -33,9 +33,18 @@ const TEAMS_KEY = 'pokechain_teams';
 let activeTeamId = null;
 
 function loadTeams() {
+    if (workingTeams !== null) {
+        try { return JSON.parse(JSON.stringify(workingTeams)); } catch { return []; }
+    }
     try { return JSON.parse(localStorage.getItem(TEAMS_KEY) || '[]'); } catch { return []; }
 }
 function saveTeams(teams) {
+    if (workingTeams !== null) {
+        workingTeams = teams;
+        tbIsDirty = true;
+        updateTbSaveBar();
+        return;
+    }
     localStorage.setItem(TEAMS_KEY, JSON.stringify(teams));
 }
 function generateTeamId() {
@@ -123,6 +132,8 @@ let tbMoveSearchState = null;     // { teamId, slotIndex, moveIndex }
 let tbPokemonPickerState = null;  // { teamId, slotIndex }
 let tbDragState = null;           // { teamId, fromIndex }
 let tbTabDragState = null;    // { fromIndex }
+let workingTeams = null;          // in-memory draft; null when team builder is closed
+let tbIsDirty = false;            // true when workingTeams differs from localStorage
 
 function updateTeamBuilderHash() {
     const teams = loadTeams();
@@ -135,6 +146,8 @@ function toggleTeamBuilder() {
     if (teamBuilderOpen) closeTeamBuilder(); else openTeamBuilder();
 }
 function openTeamBuilder() {
+    try { workingTeams = JSON.parse(localStorage.getItem(TEAMS_KEY) || '[]'); } catch { workingTeams = []; }
+    tbIsDirty = false;
     teamBuilderOpen = true;
     tbEditMode = false;
     document.querySelector('.search-wrapper').style.display = 'none';
@@ -144,11 +157,15 @@ function openTeamBuilder() {
     view.style.display = 'block';
     view.classList.remove('edit-mode');
     document.getElementById('teamBuilderBtn').classList.add('active');
+    updateTbSaveBar();
     const teams = loadTeams();
     if (teams.length === 0) {
         const first = createTeamRecord('Team 1');
         saveTeam(first);
         activeTeamId = first.id;
+        localStorage.setItem(TEAMS_KEY, JSON.stringify(workingTeams));
+        tbIsDirty = false;
+        updateTbSaveBar();
     } else if (!activeTeamId || !teams.find(t => t.id === activeTeamId)) {
         activeTeamId = teams[0].id;
     }
@@ -156,6 +173,12 @@ function openTeamBuilder() {
     renderTeamBuilder();
 }
 function closeTeamBuilder() {
+    if (tbIsDirty) { showTbUnsavedModal(); return; }
+    _doCloseTeamBuilder();
+}
+function _doCloseTeamBuilder() {
+    workingTeams = null;
+    tbIsDirty = false;
     teamBuilderOpen = false;
     if (window.location.hash.startsWith('#team-builder')) window.location.hash = '';
     document.getElementById('teamBuilderView').style.display = 'none';
@@ -1073,4 +1096,90 @@ function confirmDeleteTeam(teamId) {
     activeTeamId = remaining[0]?.id || null;
     updateTeamBuilderHash();
     renderTeamBuilder();
+}
+
+// ============================================================
+// Team Builder — Save / Revert
+// ============================================================
+
+function updateTbSaveBar() {
+    const bar = document.getElementById('tbSaveBar');
+    if (bar) bar.classList.toggle('visible', tbIsDirty);
+}
+
+function commitSave() {
+    localStorage.setItem(TEAMS_KEY, JSON.stringify(workingTeams));
+    tbIsDirty = false;
+    updateTbSaveBar();
+}
+
+function revertChanges() {
+    try { workingTeams = JSON.parse(localStorage.getItem(TEAMS_KEY) || '[]'); } catch { workingTeams = []; }
+    tbIsDirty = false;
+    const teams = workingTeams;
+    if (!teams.find(t => t.id === activeTeamId)) activeTeamId = teams[0]?.id || null;
+    updateTeamBuilderHash();
+    renderTeamBuilder();
+    updateTbSaveBar();
+}
+
+function tbConfirmSave() {
+    showTbConfirmModal('Save changes to your team?', 'Save', 'tb-confirm-save', commitSave);
+}
+
+function tbConfirmRevert() {
+    showTbConfirmModal('Discard all unsaved changes?', 'Discard', 'tb-confirm-danger', revertChanges);
+}
+
+function showTbConfirmModal(message, confirmLabel, confirmClass, onConfirm) {
+    closeTbConfirmModal();
+    const modal = document.createElement('div');
+    modal.id = 'tbConfirmModal';
+    modal.className = 'type-modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="type-modal-content tb-confirm-modal-content" onclick="event.stopPropagation()">
+            <p class="tb-confirm-message">${escapeHtml(message)}</p>
+            <div class="tb-confirm-actions">
+                <button class="btn-reveal tb-confirm-cancel" id="tbConfirmCancelBtn">Cancel</button>
+                <button class="btn-reveal ${confirmClass}" id="tbConfirmOkBtn">${escapeHtml(confirmLabel)}</button>
+            </div>
+        </div>
+    `;
+    modal.addEventListener('click', closeTbConfirmModal);
+    document.body.appendChild(modal);
+    document.getElementById('tbConfirmCancelBtn').addEventListener('click', e => { e.stopPropagation(); closeTbConfirmModal(); });
+    document.getElementById('tbConfirmOkBtn').addEventListener('click', e => { e.stopPropagation(); closeTbConfirmModal(); onConfirm(); });
+}
+
+function showTbUnsavedModal() {
+    closeTbConfirmModal();
+    const modal = document.createElement('div');
+    modal.id = 'tbConfirmModal';
+    modal.className = 'type-modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="type-modal-content tb-confirm-modal-content" onclick="event.stopPropagation()">
+            <p class="tb-confirm-message">You have unsaved changes.</p>
+            <div class="tb-confirm-actions">
+                <button class="btn-reveal tb-confirm-cancel" id="tbUnsavedKeepBtn">Keep editing</button>
+                <button class="btn-reveal tb-confirm-danger" id="tbUnsavedDiscardBtn">Discard &amp; close</button>
+                <button class="btn-reveal tb-confirm-save" id="tbUnsavedSaveBtn">Save &amp; close</button>
+            </div>
+        </div>
+    `;
+    modal.addEventListener('click', closeTbConfirmModal);
+    document.body.appendChild(modal);
+    document.getElementById('tbUnsavedKeepBtn').addEventListener('click', e => { e.stopPropagation(); closeTbConfirmModal(); });
+    document.getElementById('tbUnsavedDiscardBtn').addEventListener('click', e => {
+        e.stopPropagation(); closeTbConfirmModal(); tbIsDirty = false; _doCloseTeamBuilder();
+    });
+    document.getElementById('tbUnsavedSaveBtn').addEventListener('click', e => {
+        e.stopPropagation(); closeTbConfirmModal(); commitSave(); _doCloseTeamBuilder();
+    });
+}
+
+function closeTbConfirmModal() {
+    const modal = document.getElementById('tbConfirmModal');
+    if (modal) modal.remove();
 }

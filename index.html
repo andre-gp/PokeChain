@@ -63,6 +63,13 @@
                 </button>
                 <button class="btn-reveal tb-new-team-btn" onclick="createNewTeam()">+ New Team</button>
             </div>
+            <div id="tbSaveBar" class="tb-save-bar">
+                <span class="tb-unsaved-label">Unsaved changes</span>
+                <div class="tb-save-bar-actions">
+                    <button class="btn-reveal tb-revert-btn" onclick="tbConfirmRevert()">Revert</button>
+                    <button class="btn-reveal tb-save-btn" onclick="tbConfirmSave()">Save</button>
+                </div>
+            </div>
             <div id="teamBuilderBody"></div>
         </div>
     </div>
