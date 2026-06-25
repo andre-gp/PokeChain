@@ -635,11 +635,14 @@ function historyItemHTML(name) {
     const clockBadge = `<span class="suggestion-history-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>`;
     const removeBtn = `<button class="suggestion-remove" data-remove="${name}" aria-label="Remove from history">&times;</button>`;
 
-    const pokemon = allPokemonNames.find(p => p.name === name);
-    if (pokemon) {
+    // Default species are in the preloaded list; form varieties (e.g. lycanroc-midnight)
+    // are not (their ids are >10000), so fall back to their cached /pokemon data for the id.
+    const id = allPokemonNames.find(p => p.name === name)?.id
+        ?? PokeCache.get(API_POKEMON + name)?.id;
+    if (id != null) {
         return `
             <div class="suggestion-item suggestion-item--history" data-name="${name}">
-                <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemon.id}.png" alt="" loading="lazy">
+                <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png" alt="" loading="lazy">
                 <span class="suggestion-name">${name}</span>
                 ${clockBadge}
                 ${removeBtn}
@@ -1472,6 +1475,9 @@ async function getMethodDetails(details) {
                 break
             case 'min_steps':
                 lines.push(`<strong>Number of steps taken:</strong> ${value} or higher`)
+                break;
+            case 'near_special_rock':
+                lines.push('<strong>Special rock:</strong> Must be near a Moss Rock or Icy Rock');
                 break;
             case 'needs_multiplayer':
                 lines.push(`<strong>Multiplayer link play is needed</strong>`);
