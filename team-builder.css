@@ -302,10 +302,10 @@
     background: rgba(124, 111, 232, 0.25);
 }
 
-/* Floating move search panel (fixed, sits above the clicked button) */
+/* Floating move search panel (sits above the clicked button) */
 .tb-move-search-panel {
     display: none;
-    position: fixed;
+    position: absolute;
     z-index: 9999;
     width: 260px;
     background: var(--bg-secondary);
@@ -369,6 +369,7 @@
     border-radius: 8px;
     max-height: 180px;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .tb-move-search-sugg.visible {
     display: flex;
@@ -594,7 +595,7 @@
 
 .tb-pokemon-picker-panel {
     display: none;
-    position: fixed;
+    position: absolute;
     z-index: 9999;
     flex-direction: column;
     background: var(--bg-secondary);
@@ -641,7 +642,7 @@
 /* Floating ability picker */
 .tb-ability-picker {
     display: none;
-    position: fixed;
+    position: absolute;
     z-index: 9999;
     min-width: 190px;
     background: var(--bg-secondary);
@@ -771,7 +772,7 @@
 /* Floating nature picker */
 .tb-nature-picker {
     display: none;
-    position: fixed;
+    position: absolute;
     z-index: 9999;
     width: 210px;
     background: var(--bg-secondary);
@@ -837,6 +838,15 @@
 .tb-nature-item--clear:hover {
     background: rgba(220, 60, 60, 0.1);
 }
+
+.tb-nature-stat-hint {
+    font-size: 0.72rem;
+    opacity: 0.8;
+    display: flex;
+    gap: 4px;
+}
+.tb-nature-plus  { color: #5a9e5a; }
+.tb-nature-minus { color: var(--danger, #dc3c3c); }
 
 /* View/Edit mode for nature */
 #teamBuilderView:not(.edit-mode) .tb-nature-btn--empty { display: none; }

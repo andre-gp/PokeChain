@@ -205,7 +205,8 @@ const stripPokemon = (data) => ({
     stats: data.stats.map(s => ({ base_stat: s.base_stat, name: s.stat.name })),
     abilities: data.abilities.map(a => ({ name: a.ability.name, is_hidden: a.is_hidden })),
     height: data.height,
-    weight: data.weight
+    weight: data.weight,
+    moves: data.moves.map(m => m.move.name),
 });
 
 const stripForm = (data) => ({

@@ -535,10 +535,10 @@ function ensureMoveSearchPanel() {
     });
 }
 
-function openMoveSearch(btnEl, teamId, slotIndex, moveIndex) {
+async function openMoveSearch(btnEl, teamId, slotIndex, moveIndex) {
     ensureMoveSearchPanel();
     closeTbMoveSearch(); // close any previously open panel first
-    tbMoveSearchState = { teamId, slotIndex, moveIndex };
+    tbMoveSearchState = { teamId, slotIndex, moveIndex, learnset: null };
 
     const panel = document.getElementById('tbMoveSearchPanel');
     const input = document.getElementById('tbMoveSearchInput');
@@ -550,21 +550,33 @@ function openMoveSearch(btnEl, teamId, slotIndex, moveIndex) {
     errEl.textContent = '';
     suggDiv.classList.remove('visible');
 
-    // Position above the clicked button (fixed, no card resizing)
+    // Position above the clicked button
     const rect = btnEl.getBoundingClientRect();
     const panelW = 260;
     let left = rect.left;
     if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
     if (left < 8) left = 8;
-    panel.style.left = left + 'px';
-    panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
-    panel.style.top = 'auto';
+    panel.style.left = (left + window.scrollX) + 'px';
+    panel.style.top = (rect.top + window.scrollY - 8) + 'px';
+    panel.style.transform = 'translateY(-100%)';
+    panel.style.bottom = 'auto';
     panel.classList.add('visible');
 
     input.focus();
     input.select();
 
     setTimeout(() => document.addEventListener('click', onTbMoveSearchOutsideClick), 0);
+
+    const pokemonName = getTeam(teamId)?.pokemon[slotIndex]?.name;
+    if (pokemonName) {
+        try {
+            const pokemonData = await cachedFetch(API_POKEMON + pokemonName, stripPokemon);
+            if (tbMoveSearchState) {
+                tbMoveSearchState.learnset = pokemonData.moves || null;
+                showTbMoveSuggestions(input.value.trim().toLowerCase());
+            }
+        } catch {}
+    }
 }
 
 function onTbMoveSearchOutsideClick(e) {
@@ -582,13 +594,16 @@ function closeTbMoveSearch() {
 function showTbMoveSuggestions(query) {
     const suggDiv = document.getElementById('tbMoveSearchSugg');
     if (!suggDiv) return;
-    if (!query || query.length < 2 || allMoveNames.length === 0) {
+    const learnset = tbMoveSearchState?.learnset;
+    if (!learnset && (!query || query.length < 2)) {
         suggDiv.classList.remove('visible');
         return;
     }
-    const matches = allMoveNames.filter(m => m.includes(query)).slice(0, 6);
+    const pool = learnset || allMoveNames;
+    if (pool.length === 0) { suggDiv.classList.remove('visible'); return; }
+    const matches = query ? pool.filter(m => m.includes(query)) : pool.slice();
     if (matches.length === 0) { suggDiv.classList.remove('visible'); return; }
-    suggDiv.innerHTML = matches.map(m => `<div class="suggestion-item" data-name="${m}">${m}</div>`).join('');
+    suggDiv.innerHTML = matches.map(m => `<div class="suggestion-item" data-name="${m}">${m.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</div>`).join('');
     suggDiv.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('mousedown', e => {
             e.preventDefault();
@@ -718,9 +733,10 @@ function openAbilityPicker(btnEl, teamId, slotIndex, abilities) {
     let left = rect.left;
     if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
     if (left < 8) left = 8;
-    panel.style.left = left + 'px';
-    panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
-    panel.style.top = 'auto';
+    panel.style.left = (left + window.scrollX) + 'px';
+    panel.style.top = (rect.top + window.scrollY - 8) + 'px';
+    panel.style.transform = 'translateY(-100%)';
+    panel.style.bottom = 'auto';
     panel.classList.add('visible');
     setTimeout(() => document.addEventListener('click', onAbilityPickerOutsideClick), 0);
 }
@@ -800,6 +816,11 @@ async function wireNatureTooltip(teamId, slotIndex) {
 let tbNaturePickerState = null;
 let tbNatureDataCache = null;
 
+const NATURE_STAT_SHORT = {
+    'attack': 'Atk', 'defense': 'Def',
+    'special-attack': 'SpA', 'special-defense': 'SpD', 'speed': 'Spe'
+};
+
 async function loadAllNatureData() {
     if (tbNatureDataCache) return tbNatureDataCache;
     const nameList = await cachedFetch(API_NATURE + '?limit=100', stripNatureList);
@@ -835,9 +856,10 @@ async function openNaturePicker(btnEl, teamId, slotIndex) {
     let left = rect.left;
     if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
     if (left < 8) left = 8;
-    panel.style.left = left + 'px';
-    panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
-    panel.style.top = 'auto';
+    panel.style.left = (left + window.scrollX) + 'px';
+    panel.style.top = (rect.top + window.scrollY - 8) + 'px';
+    panel.style.transform = 'translateY(-100%)';
+    panel.style.bottom = 'auto';
     panel.classList.add('visible');
 
     const currentNature = getTeam(teamId)?.pokemon[slotIndex]?.nature || null;
@@ -846,8 +868,11 @@ async function openNaturePicker(btnEl, teamId, slotIndex) {
 
     try {
         const natures = await loadAllNatureData();
+
         const items = natures.map(n => {
-            const statHtml = buildNatureStatHtml(n);
+            const statHtml = n.increased_stat
+                ? ` <span class="tb-nature-stat-hint"><span class="tb-nature-plus">+${NATURE_STAT_SHORT[n.increased_stat.name]}</span> <span class="tb-nature-minus">−${NATURE_STAT_SHORT[n.decreased_stat.name]}</span></span>`
+                : '';
             const active = n.name === currentNature ? ' tb-nature-item--active' : '';
             const displayName = n.name.charAt(0).toUpperCase() + n.name.slice(1);
             return `<button class="tb-nature-item${active}" data-name="${n.name}">${displayName}${statHtml}</button>`;
@@ -938,8 +963,8 @@ function openPokemonPicker(triggerEl, teamId, slotIndex) {
 
     const slotEl = triggerEl.closest('.tb-slot') || triggerEl;
     const rect = slotEl.getBoundingClientRect();
-    panel.style.left = rect.left + 'px';
-    panel.style.top = rect.top + 'px';
+    panel.style.left = (rect.left + window.scrollX) + 'px';
+    panel.style.top = (rect.top + window.scrollY) + 'px';
     panel.style.width = rect.width + 'px';
     panel.classList.add('visible');
 
