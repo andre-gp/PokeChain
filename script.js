@@ -559,7 +559,7 @@ function showSuggestions(query) {
     const moveHTML = moveMatches.map(m => `
         <div class="suggestion-item suggestion-item--move" data-name="${m}">
             <span class="suggestion-move-icon">⚡</span>
-            <span class="suggestion-name">${m}</span>
+            <span class="suggestion-name">${m.replace(/-/g, ' ')}</span>
             <span class="suggestion-badge">Move</span>
         </div>
     `).join('');
@@ -595,7 +595,7 @@ function historyItemHTML(name) {
     return `
         <div class="suggestion-item suggestion-item--move suggestion-item--history" data-name="${name}">
             <span class="suggestion-move-icon">⚡</span>
-            <span class="suggestion-name">${name}</span>
+            <span class="suggestion-name">${name.replace(/-/g, ' ')}</span>
             ${clockBadge}
             ${removeBtn}
         </div>`;

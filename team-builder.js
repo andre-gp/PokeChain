@@ -391,9 +391,10 @@ function renderMoveButtons(teamId, slotIndex, moves) {
             const colorStyle = typeColor
                 ? ` style="border-color:${typeColor};color:${typeColor};background:${typeColor}18;"`
                 : '';
+            const displayName = moveData?.names ? getCurrentLanguageName(moveData) : moveName;
             return `<button class="tb-move-btn tb-move-btn--filled"${colorStyle}
                 onclick="onMoveButtonClick(this, '${teamId}', ${slotIndex}, ${moveIdx}, '${escapeHtml(moveName)}')"
-                title="${escapeHtml(moveName)}">${escapeHtml(moveName)}</button>`;
+                title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</button>`;
         }
         return `<button class="tb-move-btn tb-move-btn--empty"
             onclick="onMoveButtonClick(this, '${teamId}', ${slotIndex}, ${moveIdx}, '')">+ Move ${moveIdx + 1}</button>`;
