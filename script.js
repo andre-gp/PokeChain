@@ -27,7 +27,7 @@ const API_NATURE = 'https://pokeapi.co/api/v2/nature/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v2.8',
+    version: 'v2.9',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -534,14 +534,60 @@ function updateActiveSuggestion(items) {
     });
 }
 
-function showSuggestions(query) {
-    const pokemonMatches = allPokemonNames
-        .filter(p => p.name.includes(query))
-        .slice(0, 5);
+function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    let prev = Array.from({length: n + 1}, (_, j) => j);
+    let curr = new Array(n + 1);
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+            curr[j] = a[i - 1] === b[j - 1]
+                ? prev[j - 1]
+                : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+        }
+        [prev, curr] = [curr, prev];
+    }
+    return prev[n];
+}
 
-    const moveMatches = allMoveNames
-        .filter(m => m.includes(query))
-        .slice(0, 8 - pokemonMatches.length);
+function fuzzyDistance(query, name) {
+    const full = levenshtein(query, name);
+    if (full <= 1) return full;
+    // Also check the name prefix of the same length to catch mid-word typos
+    const prefix = levenshtein(query, name.slice(0, query.length));
+    return Math.min(full, prefix);
+}
+
+function showSuggestions(query) {
+    const LIMIT = 5;
+    const threshold = Math.max(1, Math.floor(query.length / 2.5));
+
+    const exactPokemon = allPokemonNames.filter(p => p.name.includes(query));
+    let pokemonMatches = exactPokemon.slice(0, LIMIT);
+    if (pokemonMatches.length < LIMIT) {
+        const exactNames = new Set(exactPokemon.map(p => p.name));
+        const fuzzy = allPokemonNames
+            .filter(p => !exactNames.has(p.name))
+            .map(p => ({ p, d: fuzzyDistance(query, p.name) }))
+            .filter(x => x.d <= threshold)
+            .sort((a, b) => a.d - b.d)
+            .map(x => x.p);
+        pokemonMatches = [...pokemonMatches, ...fuzzy].slice(0, LIMIT);
+    }
+
+    const moveLimit = 8 - pokemonMatches.length;
+    const exactMoves = allMoveNames.filter(m => m.includes(query));
+    let moveMatches = exactMoves.slice(0, moveLimit);
+    if (moveMatches.length < moveLimit) {
+        const exactMoveSet = new Set(exactMoves);
+        const fuzzyMoves = allMoveNames
+            .filter(m => !exactMoveSet.has(m))
+            .map(m => ({ m, d: fuzzyDistance(query, m) }))
+            .filter(x => x.d <= threshold)
+            .sort((a, b) => a.d - b.d)
+            .map(x => x.m);
+        moveMatches = [...moveMatches, ...fuzzyMoves].slice(0, moveLimit);
+    }
 
     if (pokemonMatches.length === 0 && moveMatches.length === 0) {
         suggestionsDiv.classList.remove('visible');
