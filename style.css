@@ -1820,133 +1820,331 @@ button.type-relation-badge:active {
     opacity: 0.6;
 }
 
+/* =========================================
+   Item card — a Bag entry
+   ---------------------------------------------------------
+   The item rests on a lit pedestal tile; pocket and
+   attributes label it, a mono price tag sells it. Secondary
+   data hydrates in place (skeletons), and the seal capsule
+   is reserved for true spoilers: evolution effects and
+   breeding secrets.
+   ========================================= */
+
+.item-card {
+    border-left: 3px solid var(--accent);
+}
+
 .item-card .item-header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-5);
+    margin-bottom: var(--space-5);
+}
+
+.item-sprite-tile {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    flex-shrink: 0;
+    display: flex;
     align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 50% 42%, var(--accent-glow), transparent 68%),
+        var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: inset 0 0 24px rgba(3, 5, 12, 0.55);
+}
+
+/* Pedestal line the sprite rests on */
+.item-sprite-tile::after {
+    content: '';
+    position: absolute;
+    bottom: 15px;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--seal-border), transparent);
 }
 
 .item-sprite {
-    width: 84px;
-    height: 84px;
+    width: 60px;
+    height: 60px;
     image-rendering: pixelated;
-    flex-shrink: 0;
     object-fit: contain;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 6px;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 5px 7px rgba(3, 5, 12, 0.6));
 }
 
-/* Lazy "More details" sealed capsule (matches .evo-card .spoiler-box) */
-.item-details-box {
-    padding: 14px 16px;
-    background: var(--seal-hatch), var(--seal-bg);
-    border-radius: var(--radius-md);
-    border: 1px dashed var(--seal-border);
-    font-size: 0.92rem;
+.item-sprite-tile--empty::before {
+    content: '?';
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
     color: var(--text-secondary);
-    transition: border-color var(--dur-med);
+    opacity: 0.5;
+    position: relative;
+    z-index: 1;
 }
 
-.item-details-box:has(.spoiler-details.visible) {
-    border-style: solid;
-    animation: sealGlow 0.9s var(--ease-out);
+.item-info {
+    flex: 1;
+    min-width: 0;
+    padding-top: var(--space-1);
 }
 
-.item-details-box .spoiler-details {
-    display: none;
+.item-name {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    text-transform: capitalize;
+    margin-bottom: var(--space-2);
 }
 
-.item-details-box .spoiler-details.visible {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    animation: unseal var(--dur-slow) var(--ease-out);
+.item-kind {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
     margin-bottom: var(--space-3);
 }
 
-.item-detail-line {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: var(--space-3);
+.item-price {
+    flex-shrink: 0;
+    text-align: right;
+    padding-top: var(--space-1);
 }
 
-.item-detail-block {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.item-detail-key {
+.item-price-label {
+    display: block;
     font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-1);
+}
+
+.item-price-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
     font-weight: 600;
     color: var(--accent);
-    text-transform: uppercase;
-    font-size: 0.66rem;
-    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
 }
 
-.item-detail-val {
-    color: var(--text-primary);
-    text-align: right;
-    text-transform: capitalize;
-}
-
-.item-detail-text {
-    margin: 0;
-    line-height: 1.6;
-    color: var(--text-secondary);
-}
-
-.item-pocket-label {
-    color: var(--text-secondary);
+.item-price-value--none {
     font-size: var(--text-sm);
-    text-transform: none;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
 .item-attribute-list {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: 6px;
 }
 
 .item-attribute-badge {
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    padding: 4px 12px;
+    color: var(--text-secondary);
+    padding: 3px 10px;
     border-radius: var(--radius-round);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: capitalize;
     cursor: default;
-    transition: border-color var(--dur-med);
+    transition: border-color var(--dur-med), color var(--dur-med);
 }
 
-.item-attribute-badge[data-tooltip]:hover {
+.item-attribute-badge[data-tooltip]:hover,
+.item-attribute-badge[data-tooltip]:focus-visible {
     border-color: var(--accent);
+    color: var(--text-primary);
 }
 
-.held-by-list {
+/* Flavor quote with its source game */
+.item-flavor {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: var(--space-2);
-    line-height: 1.8;
 }
 
-.held-by-list a {
+.item-flavor p {
+    margin: 0;
+}
+
+.item-flavor-source {
+    align-self: flex-end;
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+}
+
+.item-flavor-source:not(:empty)::before {
+    content: '— ';
+}
+
+.item-effect p + p {
+    margin-top: var(--space-2);
+}
+
+.item-effect strong {
+    color: var(--text-primary);
+}
+
+/* Facts strip: cells only render when the item has the fact */
+.item-facts {
+    justify-content: flex-start;
+    gap: var(--space-7);
+    padding-left: var(--space-5);
+    margin-bottom: var(--space-4);
+}
+
+.item-facts .stat-item {
+    text-align: left;
+}
+
+.item-fling-name {
+    text-transform: capitalize;
+    border-bottom: 1px dashed var(--border-strong);
+    cursor: help;
+}
+
+.item-teaches-link {
     color: var(--accent);
     text-decoration: none;
-    font-weight: 500;
-    text-transform: capitalize;
     cursor: pointer;
     transition: color var(--dur-fast);
 }
 
-.held-by-list a:hover {
+.item-teaches-link:hover {
     color: var(--accent-hover);
     text-decoration: underline;
     text-underline-offset: 3px;
+}
+
+/* Which game the shown TM move comes from */
+.item-teaches-vg {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+}
+
+/* Held-by chips: wild Pokémon with hold rarity */
+.held-by-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.held-by-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 4px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-round);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+
+.held-by-chip:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg-tertiary));
+    transform: translateY(-1px);
+}
+
+.held-by-chip img {
+    width: 28px;
+    height: 28px;
+    margin: -4px 0 -4px -6px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+.held-by-name {
+    text-transform: capitalize;
+}
+
+.held-by-rarity {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Seal capsule — only for real spoilers (evolution effect, breeding) */
+.item-seal {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-4);
+    padding: 14px 16px;
+    background: var(--seal-hatch), var(--seal-bg);
+    border: 1px dashed var(--seal-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.item-seal--open {
+    border-style: solid;
+    animation: sealGlow 0.9s var(--ease-out);
+}
+
+.item-seal-note {
+    font-style: italic;
+}
+
+.item-seal .spoiler-details {
+    display: none;
+    flex: 1 1 100%;
+}
+
+.item-seal .spoiler-details.visible {
+    display: block;
+    animation: unseal var(--dur-slow) var(--ease-out);
+    line-height: 1.6;
+}
+
+/* Skeleton shimmer for slots that hydrate after first paint */
+.skel {
+    display: inline-block;
+    width: var(--skel-w, 90px);
+    height: 0.85em;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--border-color) 50%, var(--bg-tertiary) 75%);
+    background-size: 200% 100%;
+    animation: skelShimmer 1.4s linear infinite;
+    vertical-align: middle;
+}
+
+.skel--chip {
+    height: 22px;
+    width: 84px;
+    border-radius: var(--radius-round);
+}
+
+@keyframes skelShimmer {
+    to { background-position: -200% 0; }
 }
 
 /* =========================================
@@ -2019,6 +2217,41 @@ button.type-relation-badge:active {
 
     .move-stats .stat-item {
         min-width: 70px;
+    }
+
+    .item-card .item-header {
+        flex-wrap: wrap;
+        gap: var(--space-4);
+    }
+
+    .item-sprite-tile {
+        width: 76px;
+        height: 76px;
+    }
+
+    .item-sprite-tile::after {
+        left: 14px;
+        right: 14px;
+        bottom: 8px;
+    }
+
+    /* Price tag drops to its own full-width row under the header */
+    .item-price {
+        width: 100%;
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-2);
+        text-align: left;
+        padding-top: 0;
+    }
+
+    .item-price-label {
+        margin-bottom: 0;
+    }
+
+    .item-facts {
+        gap: var(--space-4) var(--space-5);
+        padding-left: var(--space-4);
     }
 }
 

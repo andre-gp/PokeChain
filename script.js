@@ -36,7 +36,7 @@ const API_EVOLUTION_CHAIN = 'https://pokeapi.co/api/v2/evolution-chain/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v3.0',
+    version: 'v3.1',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -331,7 +331,11 @@ function stripItem(data) {
         effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries),
         flavor_text_entries: stripArrayToCurrentLanguageEntry(data.flavor_text_entries),
         sprite: data.sprites?.default ?? null,
-        held_by_pokemon: data.held_by_pokemon.map(h => h.pokemon.name),
+        held_by_pokemon: data.held_by_pokemon.map(h => ({
+            name: h.pokemon.name,
+            id: Number(h.pokemon.url.match(/\/(\d+)\/?$/)?.[1] ?? 0),
+            rarity: Math.max(0, ...h.version_details.map(v => v.rarity)),
+        })),
         baby_trigger_for: data.baby_trigger_for,
         machines: data.machines,
     };
@@ -1946,196 +1950,283 @@ async function renderMoveResults(moveData, targetEl = null) {
     (targetEl || resultsDiv).innerHTML = html;
 }
 
+// Effect text of these categories names evolution targets ("Evolves an Eevee
+// into Flareon…"), so it stays sealed like evolution methods elsewhere.
+const SPOILER_ITEM_CATEGORIES = new Set(['evolution', 'mega-stones']);
+
+// Trade-evolution items (King's Rock, Metal Coat…) sit in non-evolution
+// categories but still spell out who evolves, so also seal any effect that
+// talks about evolving and names a species.
+function itemEffectHasSpoilers(itemData, effect) {
+    if (SPOILER_ITEM_CATEGORIES.has(itemData.category?.name)) return true;
+    if (!/evolv/i.test(effect)) return false;
+    if (allPokemonNames.length === 0) return true; // list not loaded yet: err on sealing
+    return allPokemonNames.some(p =>
+        new RegExp(`\\b${p.name.replace(/-/g, '[\\s-]')}\\b`, 'i').test(effect));
+}
+
+// Item effect text uses "Term\n:   definition" blocks separated by blank lines.
+function formatItemEffect(text) {
+    return text.split(/\n\s*\n/).map(block => {
+        const def = block.match(/^([^\n]+)\n\s*:\s+([\s\S]+)$/);
+        const body = def
+            ? `<strong>${def[1].trim()}:</strong> ${def[2].replace(/\s+/g, ' ').trim()}`
+            : block.replace(/\s+/g, ' ').trim();
+        return `<p>${body}</p>`;
+    }).join('');
+}
+
 async function renderItemResults(itemData) {
     const itemName = getCurrentLanguageName(itemData);
-    const sprite = itemData.sprite;
+    const uid = itemData.id;
 
-    const costDisplay = itemData.cost > 0 ? `₽${itemData.cost.toLocaleString()}` : 'Not sold';
-    const flingDisplay = itemData.fling_power != null ? itemData.fling_power : '—';
+    const tileHtml = `
+        <div class="item-sprite-tile${itemData.sprite ? '' : ' item-sprite-tile--empty'}">
+            ${itemData.sprite ? `<img class="item-sprite" src="${itemData.sprite}" alt="" onerror="this.parentElement.classList.add('item-sprite-tile--empty'); this.remove()">` : ''}
+        </div>`;
 
-    const effect = itemData.effect_entries?.[0]?.effect ?? '';
-    const flavorText = itemData.flavor_text_entries?.[0]?.text ?? '';
+    const priceHtml = `
+        <div class="item-price">
+            <span class="item-price-label">Cost</span>
+            ${itemData.cost > 0
+                ? `<span class="item-price-value">₽${itemData.cost.toLocaleString()}</span>`
+                : `<span class="item-price-value item-price-value--none">Not sold</span>`}
+        </div>`;
 
-    // Everything below needs additional endpoints, so it's serialized and only
-    // fetched when the user reveals it — opening an item page makes no extra calls.
-    const deferred = {
-        category: itemData.category,
-        attributes: itemData.attributes,
-        fling_effect: itemData.fling_effect,
-        machines: itemData.machines,
-        held_by_pokemon: itemData.held_by_pokemon,
-        baby_trigger_for: itemData.baby_trigger_for,
-    };
-    const detailsId = `item-details-${itemData.id}`;
-    const btnId = `item-details-btn-${itemData.id}`;
-    const encodedDeferred = encodeURIComponent(JSON.stringify(deferred));
-
-    const spriteHtml = sprite
-        ? `<img class="item-sprite" src="${sprite}" alt="${itemName}" onerror="this.style.display='none'">`
+    const attrListHtml = itemData.attributes?.length
+        ? `<div class="item-attribute-list" id="item-attrs-${uid}">${itemData.attributes.map(() => '<span class="skel skel--chip"></span>').join('')}</div>`
         : '';
 
-    const effectHtml = effect ? `
-        <div class="move-section">
-            <h4>Effect</h4>
-            <p class="move-effect">${effect}</p>
-        </div>` : '';
-
+    const flavorText = itemData.flavor_text_entries?.[0]?.text?.replace(/\s+/g, ' ').trim() ?? '';
     const flavorHtml = flavorText ? `
         <div class="move-section move-section--flavor">
             <h4>Description</h4>
-            <p class="move-flavor">${flavorText}</p>
+            <div class="move-flavor item-flavor">
+                <p>${flavorText}</p>
+                <span class="item-flavor-source" id="item-flavor-src-${uid}"></span>
+            </div>
+        </div>` : '';
+
+    const effectRaw = itemData.effect_entries?.[0]?.effect ?? '';
+    let effectHtml = '';
+    if (effectRaw) {
+        effectHtml = itemEffectHasSpoilers(itemData, effectRaw) ? `
+        <div class="move-section">
+            <h4>Effect</h4>
+            <div class="item-seal" id="item-effect-seal-${uid}">
+                <div class="spoiler-details item-effect" data-item-effect="${encodeURIComponent(effectRaw)}"></div>
+                <span class="item-seal-note">Sealed — it names the Pokémon this item evolves.</span>
+                <button class="btn-reveal" onclick="revealItemEffect(${uid})">Reveal effect</button>
+            </div>
+        </div>` : `
+        <div class="move-section">
+            <h4>Effect</h4>
+            <div class="move-effect item-effect">${formatItemEffect(effectRaw)}</div>
+        </div>`;
+    }
+
+    const facts = [];
+    if (itemData.fling_power != null) {
+        facts.push(`
+            <div class="stat-item">
+                <span class="stat-label">Fling Power</span>
+                <span class="stat-value">${itemData.fling_power}</span>
+            </div>`);
+    }
+    if (itemData.fling_effect) {
+        facts.push(`
+            <div class="stat-item">
+                <span class="stat-label">Fling Effect</span>
+                <span class="stat-value stat-value--target" id="item-fling-${uid}"><span class="skel" style="--skel-w:64px"></span></span>
+            </div>`);
+    }
+    if (itemData.machines?.length) {
+        facts.push(`
+            <div class="stat-item">
+                <span class="stat-label">Teaches</span>
+                <span class="stat-value stat-value--target" id="item-teaches-${uid}"><span class="skel" style="--skel-w:88px"></span></span>
+            </div>`);
+    }
+    const factsHtml = facts.length ? `<div class="move-stats item-facts">${facts.join('')}</div>` : '';
+
+    const heldBy = (itemData.held_by_pokemon ?? []).slice().sort((a, b) => b.rarity - a.rarity);
+    const heldByHtml = heldBy.length ? `
+        <div class="move-section">
+            <h4>Held by wild Pokémon</h4>
+            <div class="held-by-grid">
+                ${heldBy.map(h => `
+                <button class="held-by-chip" onclick="navigateTo('${h.name}')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${h.id}.png" alt="" loading="lazy" onerror="this.remove()">
+                    <span class="held-by-name">${h.name.replace(/-/g, ' ')}</span>
+                    ${h.rarity > 0 ? `<span class="held-by-rarity">${h.rarity}%</span>` : ''}
+                </button>`).join('')}
+            </div>
+        </div>` : '';
+
+    const breedingHtml = itemData.baby_trigger_for ? `
+        <div class="move-section">
+            <h4>Breeding</h4>
+            <div class="item-seal" id="item-breed-seal-${uid}">
+                <div class="spoiler-details" id="item-breed-${uid}" data-chain-url="${itemData.baby_trigger_for.url}"></div>
+                <span class="item-seal-note">Sealed — it reveals a breeding secret.</span>
+                <button class="btn-reveal" onclick="revealItemBreeding(${uid})">Reveal</button>
+            </div>
         </div>` : '';
 
     const html = `
-        <div class="result-card item-card" style="border-left: 3px solid var(--accent)">
-            <div class="move-header item-header">
-                ${spriteHtml}
-                <div class="move-info">
-                    <div class="move-name">${itemName}</div>
+        <div class="result-card item-card">
+            <div class="item-header">
+                ${tileHtml}
+                <div class="item-info">
+                    <div class="item-name">${itemName}</div>
+                    <div class="item-kind" id="item-kind-${uid}"><span class="skel" style="--skel-w:150px"></span></div>
+                    ${attrListHtml}
                 </div>
+                ${priceHtml}
             </div>
             <div class="divider"></div>
-            <div class="move-stats">
-                <div class="stat-item">
-                    <span class="stat-label">Cost</span>
-                    <span class="stat-value stat-value--target">${costDisplay}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Fling Power</span>
-                    <span class="stat-value">${flingDisplay}</span>
-                </div>
-            </div>
-            ${effectHtml}
             ${flavorHtml}
-            <div class="move-section">
-                <h4>More details</h4>
-                <div class="spoiler-box item-details-box">
-                    <div class="spoiler-details" id="${detailsId}" data-item-deferred="${encodedDeferred}" hidden></div>
-                    <button class="btn-reveal" onclick="toggleItemDetails('${detailsId}', '${btnId}')" id="${btnId}">
-                        Reveal details
-                    </button>
-                </div>
-            </div>
+            ${effectHtml}
+            ${factsHtml}
+            ${heldByHtml}
+            ${breedingHtml}
         </div>
     `;
 
     resultsDiv.innerHTML = html;
+    hydrateItemCard(itemData);
 }
 
-// Lazily fetch and render the secondary item info (category, attributes, fling
-// effect, TM move, held-by, baby trigger) on first reveal — mirrors toggleMethodSpoiler.
-async function toggleItemDetails(detailsId, btnId) {
-    const details = document.getElementById(detailsId);
-    const btn = document.getElementById(btnId);
-    details.classList.add('visible');
-    btn.style.display = 'none';
+// Fill the card slots that need extra endpoints (category, attributes, fling
+// effect, TM move, flavor game label) after first paint — no reveal click needed.
+// Each write re-checks its slot so a navigation away just drops the result.
+async function hydrateItemCard(itemData) {
+    const uid = itemData.id;
 
-    details.innerHTML = '<div style="text-align:center;padding:12px"><div class="spinner" style="margin:0 auto"></div></div>';
+    const write = async (id, fn, fallback = null) => {
+        let html = fallback;
+        try {
+            html = await fn();
+        } catch (e) {
+            console.warn('Item card slot failed', id, e);
+        }
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (html == null) el.remove();
+        else el.innerHTML = html;
+    };
+
+    const fills = [];
+
+    if (itemData.category) {
+        fills.push(write(`item-kind-${uid}`, async () => {
+            const categoryData = await cachedFetch(itemData.category.url, stripItemCategory);
+            const parts = [getCurrentLanguageName(categoryData)];
+            if (categoryData.pocket) {
+                const pocketName = await cachedFetchNameInCurrentLanguage(categoryData.pocket.url);
+                if (pocketName) parts.push(`${pocketName} pocket`);
+            }
+            return parts.join(' · ');
+        }));
+    } else {
+        write(`item-kind-${uid}`, async () => null);
+    }
+
+    if (itemData.attributes?.length) {
+        fills.push(write(`item-attrs-${uid}`, async () => {
+            const attrs = await Promise.all(itemData.attributes.map(async a => {
+                const attrData = await cachedFetch(a.url, stripItemAttribute);
+                return {
+                    // API attribute names come underscored ("Holdable_active")
+                    name: getCurrentLanguageName(attrData).replace(/_/g, ' '),
+                    desc: attrData.descriptions?.[0]?.description ?? ''
+                };
+            }));
+            return attrs.map(a => {
+                const tooltip = a.desc ? ` data-tooltip="${a.desc.replace(/"/g, '&quot;')}"` : '';
+                return `<span class="item-attribute-badge"${tooltip}>${a.name}</span>`;
+            }).join('');
+        }));
+    }
+
+    if (itemData.fling_effect) {
+        fills.push(write(`item-fling-${uid}`, async () => {
+            const flingData = await cachedFetch(itemData.fling_effect.url, stripFlingEffect);
+            const effect = flingData.effect_entries?.[0]?.effect ?? '';
+            const tooltip = effect ? ` data-tooltip="${effect.replace(/"/g, '&quot;')}"` : '';
+            return `<span class="item-fling-name"${tooltip}>${flingData.name.replace(/-/g, ' ')}</span>`;
+        }, '—'));
+    }
+
+    if (itemData.machines?.length) {
+        fills.push(write(`item-teaches-${uid}`, async () => {
+            // The same TM teaches different moves across games; show the newest (highest machine id).
+            const latest = itemData.machines
+                .map(m => ({ m, id: parseInt(m.machine.url.match(/\/(\d+)\/?$/)?.[1] ?? '0', 10) }))
+                .sort((a, b) => b.id - a.id)[0].m;
+            const machineData = await cachedFetch(latest.machine.url, stripMachine);
+            const [moveName, gameLabel] = await Promise.all([
+                cachedFetchNameInCurrentLanguage(machineData.move.url),
+                getVersionGroupLabel(versionGroupId(latest.version_group)),
+            ]);
+            return `<a class="item-teaches-link" onclick="navigateTo('${machineData.move.name}')">${moveName}</a>`
+                + (gameLabel ? `<span class="item-teaches-vg">${gameLabel}</span>` : '');
+        }, '—'));
+    }
+
+    const flavorVersionGroup = itemData.flavor_text_entries?.[0]?.version_group;
+    if (flavorVersionGroup) {
+        fills.push(write(`item-flavor-src-${uid}`, async () => {
+            const label = await getVersionGroupLabel(versionGroupId(flavorVersionGroup));
+            return label ? `Pokémon ${label}` : '';
+        }, ''));
+    }
+
+    await Promise.allSettled(fills);
+
+    document.querySelectorAll('.item-card [data-tooltip]').forEach(el => {
+        el.tabIndex = 0;
+        el.addEventListener('mouseenter', () => abilityTooltip.show(el));
+        el.addEventListener('mouseleave', () => abilityTooltip.hide());
+        el.addEventListener('focus',      () => abilityTooltip.show(el));
+        el.addEventListener('blur',       () => abilityTooltip.hide());
+    });
+}
+
+function openItemSeal(seal, details, contentHtml) {
+    details.innerHTML = contentHtml;
+    details.classList.add('visible');
+    seal.classList.add('item-seal--open');
+    seal.querySelector('.item-seal-note')?.remove();
+    seal.querySelector('.btn-reveal')?.remove();
+}
+
+function revealItemEffect(uid) {
+    const seal = document.getElementById(`item-effect-seal-${uid}`);
+    const details = seal.querySelector('.spoiler-details');
+    openItemSeal(seal, details, formatItemEffect(decodeURIComponent(details.dataset.itemEffect)));
+}
+
+// The chain fetch stays behind the reveal: it both hides the spoiler and keeps
+// the item page from calling /evolution-chain unprompted.
+async function revealItemBreeding(uid) {
+    const seal = document.getElementById(`item-breed-seal-${uid}`);
+    const details = document.getElementById(`item-breed-${uid}`);
+    const btn = seal.querySelector('.btn-reveal');
+    btn.disabled = true;
 
     try {
-        const deferred = JSON.parse(decodeURIComponent(details.dataset.itemDeferred));
-        details.innerHTML = await renderItemDetails(deferred);
-
-        details.querySelectorAll('.item-attribute-badge[data-tooltip]').forEach(el => {
-            el.tabIndex = 0;
-            el.addEventListener('mouseenter', () => abilityTooltip.show(el));
-            el.addEventListener('mouseleave', () => abilityTooltip.hide());
-            el.addEventListener('focus',      () => abilityTooltip.show(el));
-            el.addEventListener('blur',       () => abilityTooltip.hide());
-        });
+        const chain = await cachedFetch(details.dataset.chainUrl);
+        const species = chain?.chain?.species;
+        if (!species) throw new Error('No baby species in evolution chain');
+        const speciesName = await cachedFetchNameInCurrentLanguage(species.url);
+        openItemSeal(seal, details,
+            `A parent holding this item produces <a onclick="navigateTo('${species.name}')">${speciesName}</a> eggs.`);
     } catch (err) {
         console.error(err);
-        details.innerHTML = 'Failed to load item details.';
+        btn.disabled = false;
+        seal.querySelector('.item-seal-note').textContent = 'Could not load breeding details — try again.';
     }
-}
-
-async function renderItemDetails(deferred) {
-    const sections = [];
-
-    if (deferred.category) {
-        const categoryData = await cachedFetch(deferred.category.url, stripItemCategory);
-        const categoryName = getCurrentLanguageName(categoryData);
-        let pocketHtml = '';
-        if (categoryData.pocket) {
-            const pocketName = await cachedFetchNameInCurrentLanguage(categoryData.pocket.url);
-            if (pocketName) pocketHtml = ` <span class="item-pocket-label">(${pocketName} pocket)</span>`;
-        }
-        sections.push(`
-            <div class="item-detail-line">
-                <span class="item-detail-key">Category</span>
-                <span class="item-detail-val">${categoryName}${pocketHtml}</span>
-            </div>`);
-    }
-
-    if (deferred.attributes?.length) {
-        const attrs = await Promise.all(deferred.attributes.map(async a => {
-            const attrData = await cachedFetch(a.url, stripItemAttribute);
-            return {
-                name: getCurrentLanguageName(attrData),
-                desc: attrData.descriptions?.[0]?.description ?? ''
-            };
-        }));
-        const badges = attrs.map(a => {
-            const tooltip = a.desc ? ` data-tooltip="${a.desc.replace(/"/g, '&quot;')}"` : '';
-            return `<span class="item-attribute-badge"${tooltip}>${a.name}</span>`;
-        }).join('');
-        sections.push(`
-            <div class="item-detail-block">
-                <span class="item-detail-key">Attributes</span>
-                <div class="item-attribute-list">${badges}</div>
-            </div>`);
-    }
-
-    if (deferred.fling_effect) {
-        const flingData = await cachedFetch(deferred.fling_effect.url, stripFlingEffect);
-        const flingEffect = flingData.effect_entries?.[0]?.effect ?? '';
-        if (flingEffect) {
-            sections.push(`
-                <div class="item-detail-block">
-                    <span class="item-detail-key">When flung</span>
-                    <p class="item-detail-text">${flingEffect}</p>
-                </div>`);
-        }
-    }
-
-    if (deferred.machines?.length) {
-        // The same TM teaches different moves across games; show the newest (highest machine id).
-        const latest = deferred.machines
-            .map(m => ({ m, id: parseInt(m.machine.url.match(/\/(\d+)\/?$/)?.[1] ?? '0', 10) }))
-            .sort((a, b) => b.id - a.id)[0].m;
-        const machineData = await cachedFetch(latest.machine.url, stripMachine);
-        const moveName = await cachedFetchNameInCurrentLanguage(machineData.move.url);
-        sections.push(`
-            <div class="item-detail-line">
-                <span class="item-detail-key">Teaches</span>
-                <span class="item-detail-val"><a class="evo-target-name" onclick="navigateTo('${machineData.move.name}')">${moveName}</a></span>
-            </div>`);
-    }
-
-    if (deferred.held_by_pokemon?.length) {
-        const links = deferred.held_by_pokemon.map(name =>
-            `<a onclick="navigateTo('${name}')">${name.replace(/-/g, ' ')}</a>`
-        ).join('');
-        sections.push(`
-            <div class="item-detail-block">
-                <span class="item-detail-key">Held by</span>
-                <div class="held-by-list">${links}</div>
-            </div>`);
-    }
-
-    if (deferred.baby_trigger_for) {
-        const chain = await cachedFetch(deferred.baby_trigger_for.url);
-        const babySlug = chain?.chain?.species?.name;
-        if (babySlug) {
-            sections.push(`
-                <div class="item-detail-line">
-                    <span class="item-detail-key">Breeds</span>
-                    <span class="item-detail-val"><a class="evo-target-name" onclick="navigateTo('${babySlug}')">${babySlug.replace(/-/g, ' ')}</a></span>
-                </div>`);
-        }
-    }
-
-    return sections.length ? sections.join('') : '<p class="item-detail-text">No additional details available.</p>';
 }
 
 function getLocalStorageSize() {
