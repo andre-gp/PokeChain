@@ -335,7 +335,7 @@ function renderCompactCard(pName, pId, pSprite, pTypes, stats = []) {
             <div class="compact-card-header">
                 <img class="compact-sprite" src="${pSprite}" alt="${pName}">
                 <div class="pokemon-info">
-                    <div class="compact-name">${pName}</div>
+                    <div class="compact-name"><a href="#${pName}" target="_blank" rel="noopener" title="Open ${pName} page">${pName}</a></div>
                     <div class="pokemon-id-row">
                         <span class="pokemon-id">#${String(pId).padStart(3, '0')}</span>
                     </div>
@@ -624,9 +624,20 @@ function showTbMoveSuggestions(query) {
     }
     const pool = learnset || allMoveNames;
     if (pool.length === 0) { suggDiv.classList.remove('visible'); return; }
-    const matches = query ? pool.filter(m => m.includes(query)) : pool.slice();
-    if (matches.length === 0) { suggDiv.classList.remove('visible'); return; }
-    suggDiv.innerHTML = matches.map(m => `<div class="suggestion-item" data-name="${m}">${m.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</div>`).join('');
+    // Move slugs are hyphenated (e.g. "fake-out"); let the user type spaces too.
+    const q = query ? query.replace(/\s+/g, '-') : '';
+    const matches = q ? pool.filter(m => m.includes(q)) : pool.slice();
+
+    // When suggesting from a Pokémon's learnset, also surface a move it can't
+    // learn if the user typed its full name exactly.
+    const extras = (learnset && q && allMoveNames.includes(q) && !matches.includes(q)) ? [q] : [];
+
+    if (matches.length === 0 && extras.length === 0) { suggDiv.classList.remove('visible'); return; }
+    const renderItem = (m, unlearnable) =>
+        `<div class="suggestion-item${unlearnable ? ' tb-move-sugg--unlearnable' : ''}" data-name="${m}">` +
+        `${m.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}` +
+        `${unlearnable ? '<span class="tb-move-sugg-badge">Not learnable</span>' : ''}</div>`;
+    suggDiv.innerHTML = matches.map(m => renderItem(m, false)).join('') + extras.map(m => renderItem(m, true)).join('');
     suggDiv.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('mousedown', e => {
             e.preventDefault();

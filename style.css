@@ -267,8 +267,9 @@ header {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.1rem;
     flex-shrink: 0;
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 .suggestion-badge {
@@ -1605,3 +1606,140 @@ button.type-relation-badge:active {
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border-color);
 }
+
+/* =========================================
+   Item card
+   ========================================= */
+
+/* Fallback icon shown when an item has no sprite (replaces the broken <img>) */
+.suggestion-item-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+.item-card .item-header {
+    align-items: center;
+}
+
+.item-sprite {
+    width: 84px;
+    height: 84px;
+    image-rendering: pixelated;
+    flex-shrink: 0;
+    object-fit: contain;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 6px;
+}
+
+/* Lazy "More details" reveal box (mirrors .evo-card .spoiler-box) */
+.item-details-box {
+    padding: 14px 16px;
+    background: rgba(124, 111, 232, 0.08);
+    border-radius: 10px;
+    border: 1px dashed var(--accent);
+    font-size: 0.92rem;
+    color: var(--text-secondary);
+}
+
+    .item-details-box .spoiler-details {
+        display: none;
+    }
+
+        .item-details-box .spoiler-details.visible {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            animation: fadeIn 0.3s ease;
+            margin-bottom: 12px;
+        }
+
+.item-detail-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.item-detail-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.item-detail-key {
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+}
+
+.item-detail-val {
+    color: var(--text-primary);
+    text-align: right;
+    text-transform: capitalize;
+}
+
+.item-detail-text {
+    margin: 0;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.item-pocket-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: none;
+}
+
+.item-attribute-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.item-attribute-badge {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    cursor: default;
+    transition: border-color 0.2s;
+}
+
+    .item-attribute-badge[data-tooltip]:hover {
+        border-color: var(--accent);
+    }
+
+.held-by-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    line-height: 1.8;
+}
+
+    .held-by-list a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+        text-transform: capitalize;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+        .held-by-list a:hover {
+            color: var(--accent-hover);
+            text-decoration: underline;
+        }

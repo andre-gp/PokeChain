@@ -25,6 +25,13 @@ const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
 const API_NATURE = 'https://pokeapi.co/api/v2/nature/';
 const API_VERSION_GROUP = 'https://pokeapi.co/api/v2/version-group/';
 const API_VERSION = 'https://pokeapi.co/api/v2/version/';
+const API_ITEM = 'https://pokeapi.co/api/v2/item/';
+const API_ITEM_CATEGORY = 'https://pokeapi.co/api/v2/item-category/';
+const API_ITEM_ATTRIBUTE = 'https://pokeapi.co/api/v2/item-attribute/';
+const API_ITEM_FLING_EFFECT = 'https://pokeapi.co/api/v2/item-fling-effect/';
+const API_ITEM_POCKET = 'https://pokeapi.co/api/v2/item-pocket/';
+const API_MACHINE = 'https://pokeapi.co/api/v2/machine/';
+const API_EVOLUTION_CHAIN = 'https://pokeapi.co/api/v2/evolution-chain/';
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
@@ -187,6 +194,8 @@ const stripPokemonList = (data) => data.results.map(r => {
 
 const stripMoveList = (data) => data.results.map(r => r.name);
 
+const stripItemList = (data) => data.results.map(r => r.name);
+
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
     evolves_from_species: data.evolves_from_species,
@@ -309,8 +318,54 @@ function stripMove(data) {
     };
 }
 
+function stripItem(data) {
+    return {
+        id: data.id,
+        name: data.name,
+        names: stripArrayToCurrentLanguageEntry(data.names),
+        cost: data.cost,
+        fling_power: data.fling_power,
+        fling_effect: data.fling_effect,
+        attributes: data.attributes,
+        category: data.category,
+        effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries),
+        flavor_text_entries: stripArrayToCurrentLanguageEntry(data.flavor_text_entries),
+        sprite: data.sprites?.default ?? null,
+        held_by_pokemon: data.held_by_pokemon.map(h => h.pokemon.name),
+        baby_trigger_for: data.baby_trigger_for,
+        machines: data.machines,
+    };
+}
+
+const stripItemCategory = (data) => ({
+    id: data.id,
+    name: data.name,
+    names: stripArrayToCurrentLanguageEntry(data.names),
+    pocket: data.pocket,
+});
+
+const stripItemAttribute = (data) => ({
+    id: data.id,
+    name: data.name,
+    names: stripArrayToCurrentLanguageEntry(data.names),
+    descriptions: stripArrayToCurrentLanguageEntry(data.descriptions),
+});
+
+const stripFlingEffect = (data) => ({
+    id: data.id,
+    name: data.name,
+    effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries),
+});
+
+const stripMachine = (data) => ({
+    id: data.id,
+    move: data.move,
+    version_group: data.version_group,
+});
+
 let allPokemonNames = [];
 let allMoveNames = [];
+let allItemNames = [];
 let searchTimeout = null;
 let activeSuggestionIndex = -1;
 let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'true';
@@ -479,8 +534,18 @@ async function loadMoveList() {
     }
 }
 
+async function loadItemList() {
+    try {
+        const data = await cachedFetch('https://pokeapi.co/api/v2/item?limit=2200', stripItemList);
+        allItemNames = data;
+    } catch (e) {
+        console.warn('Failed to load item list for autocomplete', e);
+    }
+}
+
 loadPokemonList();
 loadMoveList();
+loadItemList();
 
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
@@ -491,7 +556,7 @@ searchInput.addEventListener('input', (e) => {
         return;
     }
 
-    if (val.length < 2 || (allPokemonNames.length === 0 && allMoveNames.length === 0) || !autocompleteEnabled) {
+    if (val.length < 2 || (allPokemonNames.length === 0 && allMoveNames.length === 0 && allItemNames.length === 0) || !autocompleteEnabled) {
         suggestionsDiv.classList.remove('visible');
         return;
     }
@@ -566,13 +631,40 @@ function fuzzyDistance(query, name) {
     return Math.min(full, prefix);
 }
 
+// Match a list of plain string names (moves, items) against the query: exact
+// substring matches first, then fuzzy matches within `threshold`, capped at `cap`.
+function matchStringList(list, query, threshold, cap) {
+    const exact = list.filter(n => n.includes(query));
+    let matches = exact.slice(0, cap);
+    if (matches.length < cap) {
+        const exactSet = new Set(exact);
+        const fuzzy = list
+            .filter(n => !exactSet.has(n))
+            .map(n => ({ n, d: fuzzyDistance(query, n) }))
+            .filter(x => x.d <= threshold)
+            .sort((a, b) => a.d - b.d)
+            .map(x => x.n);
+        matches = [...matches, ...fuzzy].slice(0, cap);
+    }
+    return matches;
+}
+
+// Many items have no individual sprite; swap the broken image for a glyph.
+function itemSpriteFallback(img) {
+    const span = document.createElement('span');
+    span.className = 'suggestion-item-icon';
+    span.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>';
+    img.replaceWith(span);
+}
+
 function showSuggestions(query) {
-    const LIMIT = 5;
+    const TOTAL = 8;
     const threshold = Math.max(1, Math.floor(query.length / 2.5));
 
+    // Pokémon entries are objects ({ name, id }); compute their matches separately.
     const exactPokemon = allPokemonNames.filter(p => p.name.includes(query));
-    let pokemonMatches = exactPokemon.slice(0, LIMIT);
-    if (pokemonMatches.length < LIMIT) {
+    let pokemonFull = exactPokemon.slice(0, TOTAL);
+    if (pokemonFull.length < TOTAL) {
         const exactNames = new Set(exactPokemon.map(p => p.name));
         const fuzzy = allPokemonNames
             .filter(p => !exactNames.has(p.name))
@@ -580,24 +672,30 @@ function showSuggestions(query) {
             .filter(x => x.d <= threshold)
             .sort((a, b) => a.d - b.d)
             .map(x => x.p);
-        pokemonMatches = [...pokemonMatches, ...fuzzy].slice(0, LIMIT);
+        pokemonFull = [...pokemonFull, ...fuzzy].slice(0, TOTAL);
     }
 
-    const moveLimit = 8 - pokemonMatches.length;
-    const exactMoves = allMoveNames.filter(m => m.includes(query));
-    let moveMatches = exactMoves.slice(0, moveLimit);
-    if (moveMatches.length < moveLimit) {
-        const exactMoveSet = new Set(exactMoves);
-        const fuzzyMoves = allMoveNames
-            .filter(m => !exactMoveSet.has(m))
-            .map(m => ({ m, d: fuzzyDistance(query, m) }))
-            .filter(x => x.d <= threshold)
-            .sort((a, b) => a.d - b.d)
-            .map(x => x.m);
-        moveMatches = [...moveMatches, ...fuzzyMoves].slice(0, moveLimit);
-    }
+    const moveFull = matchStringList(allMoveNames, query, threshold, TOTAL);
+    const itemFull = matchStringList(allItemNames, query, threshold, TOTAL);
 
-    if (pokemonMatches.length === 0 && moveMatches.length === 0) {
+    // Reserve a base quota per category, then backfill leftover slots in
+    // priority order (Pokémon → moves → items) so a strong match isn't crowded out.
+    let pokemonMatches = pokemonFull.slice(0, 4);
+    let moveMatches = moveFull.slice(0, 2);
+    let itemMatches = itemFull.slice(0, 2);
+
+    let remaining = TOTAL - (pokemonMatches.length + moveMatches.length + itemMatches.length);
+    const backfill = (matches, full) => {
+        if (remaining <= 0) return matches;
+        const extra = full.slice(matches.length, matches.length + remaining);
+        remaining -= extra.length;
+        return [...matches, ...extra];
+    };
+    pokemonMatches = backfill(pokemonMatches, pokemonFull);
+    moveMatches = backfill(moveMatches, moveFull);
+    itemMatches = backfill(itemMatches, itemFull);
+
+    if (pokemonMatches.length === 0 && moveMatches.length === 0 && itemMatches.length === 0) {
         suggestionsDiv.classList.remove('visible');
         return;
     }
@@ -612,13 +710,21 @@ function showSuggestions(query) {
 
     const moveHTML = moveMatches.map(m => `
         <div class="suggestion-item suggestion-item--move" data-name="${m}">
-            <span class="suggestion-move-icon">⚡</span>
+            <span class="suggestion-move-icon"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
             <span class="suggestion-name">${m.replace(/-/g, ' ')}</span>
             <span class="suggestion-badge">Move</span>
         </div>
     `).join('');
 
-    suggestionsDiv.innerHTML = pokemonHTML + moveHTML;
+    const itemHTML = itemMatches.map(i => `
+        <div class="suggestion-item suggestion-item--item" data-name="${i}">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${i}.png" alt="" loading="lazy" onerror="itemSpriteFallback(this)">
+            <span class="suggestion-name">${i.replace(/-/g, ' ')}</span>
+            <span class="suggestion-badge">Item</span>
+        </div>
+    `).join('');
+
+    suggestionsDiv.innerHTML = pokemonHTML + moveHTML + itemHTML;
 
     suggestionsDiv.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -649,9 +755,19 @@ function historyItemHTML(name) {
             </div>`;
     }
 
+    if (allItemNames.includes(name)) {
+        return `
+            <div class="suggestion-item suggestion-item--item suggestion-item--history" data-name="${name}">
+                <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${name}.png" alt="" loading="lazy" onerror="itemSpriteFallback(this)">
+                <span class="suggestion-name">${name.replace(/-/g, ' ')}</span>
+                ${clockBadge}
+                ${removeBtn}
+            </div>`;
+    }
+
     return `
         <div class="suggestion-item suggestion-item--move suggestion-item--history" data-name="${name}">
-            <span class="suggestion-move-icon">⚡</span>
+            <span class="suggestion-move-icon"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
             <span class="suggestion-name">${name.replace(/-/g, ' ')}</span>
             ${clockBadge}
             ${removeBtn}
@@ -741,7 +857,18 @@ async function search(query) {
             cachedFetch(moveUrl, stripMove).then(value => ({ type: "move", value }))
         ];
 
-        const result = await Promise.any(taggedPromises);
+        let result;
+        try {
+            result = await Promise.any(taggedPromises);
+        } catch (aggErr) {
+            // None of Pokémon/species/move matched — fall back to an item lookup.
+            // Done here (not raced above) so Pokémon/species/move keep precedence over
+            // same-named items (e.g. "metronome"), and the item is only fetched when needed.
+            const itemData = await cachedFetch(API_ITEM + cleanQuery, stripItem);
+            await renderItemResults(itemData);
+            addToHistory(cleanQuery);
+            return;
+        }
 
         if (result.type === "pokemon") {
             const pokemonData = result.value;
@@ -786,7 +913,7 @@ async function search(query) {
         }
     } catch (err) {
         console.error(err);
-        showError(`"${cleanQuery}" not found as a Pokémon, Species, or Move. Please check the spelling.`);
+        showError(`"${cleanQuery}" not found as a Pokémon, Species, Move, or Item. Please check the spelling.`);
     } finally {
         searchSpinner.classList.remove('active');
     }
@@ -1809,6 +1936,198 @@ async function renderMoveResults(moveData, targetEl = null) {
     `;
 
     (targetEl || resultsDiv).innerHTML = html;
+}
+
+async function renderItemResults(itemData) {
+    const itemName = getCurrentLanguageName(itemData);
+    const sprite = itemData.sprite;
+
+    const costDisplay = itemData.cost > 0 ? `₽${itemData.cost.toLocaleString()}` : 'Not sold';
+    const flingDisplay = itemData.fling_power != null ? itemData.fling_power : '—';
+
+    const effect = itemData.effect_entries?.[0]?.effect ?? '';
+    const flavorText = itemData.flavor_text_entries?.[0]?.text ?? '';
+
+    // Everything below needs additional endpoints, so it's serialized and only
+    // fetched when the user reveals it — opening an item page makes no extra calls.
+    const deferred = {
+        category: itemData.category,
+        attributes: itemData.attributes,
+        fling_effect: itemData.fling_effect,
+        machines: itemData.machines,
+        held_by_pokemon: itemData.held_by_pokemon,
+        baby_trigger_for: itemData.baby_trigger_for,
+    };
+    const detailsId = `item-details-${itemData.id}`;
+    const btnId = `item-details-btn-${itemData.id}`;
+    const encodedDeferred = encodeURIComponent(JSON.stringify(deferred));
+
+    const spriteHtml = sprite
+        ? `<img class="item-sprite" src="${sprite}" alt="${itemName}" onerror="this.style.display='none'">`
+        : '';
+
+    const effectHtml = effect ? `
+        <div class="move-section">
+            <h4>Effect</h4>
+            <p class="move-effect">${effect}</p>
+        </div>` : '';
+
+    const flavorHtml = flavorText ? `
+        <div class="move-section move-section--flavor">
+            <h4>Description</h4>
+            <p class="move-flavor">${flavorText}</p>
+        </div>` : '';
+
+    const html = `
+        <div class="result-card item-card" style="border-left: 3px solid var(--accent)">
+            <div class="move-header item-header">
+                ${spriteHtml}
+                <div class="move-info">
+                    <div class="move-name">${itemName}</div>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="move-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Cost</span>
+                    <span class="stat-value stat-value--target">${costDisplay}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Fling Power</span>
+                    <span class="stat-value">${flingDisplay}</span>
+                </div>
+            </div>
+            ${effectHtml}
+            ${flavorHtml}
+            <div class="move-section">
+                <h4>More details</h4>
+                <div class="spoiler-box item-details-box">
+                    <div class="spoiler-details" id="${detailsId}" data-item-deferred="${encodedDeferred}" hidden></div>
+                    <button class="btn-reveal" onclick="toggleItemDetails('${detailsId}', '${btnId}')" id="${btnId}">
+                        Reveal details
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    resultsDiv.innerHTML = html;
+}
+
+// Lazily fetch and render the secondary item info (category, attributes, fling
+// effect, TM move, held-by, baby trigger) on first reveal — mirrors toggleMethodSpoiler.
+async function toggleItemDetails(detailsId, btnId) {
+    const details = document.getElementById(detailsId);
+    const btn = document.getElementById(btnId);
+    details.classList.add('visible');
+    btn.style.display = 'none';
+
+    details.innerHTML = '<div style="text-align:center;padding:12px"><div class="spinner" style="margin:0 auto"></div></div>';
+
+    try {
+        const deferred = JSON.parse(decodeURIComponent(details.dataset.itemDeferred));
+        details.innerHTML = await renderItemDetails(deferred);
+
+        details.querySelectorAll('.item-attribute-badge[data-tooltip]').forEach(el => {
+            el.tabIndex = 0;
+            el.addEventListener('mouseenter', () => abilityTooltip.show(el));
+            el.addEventListener('mouseleave', () => abilityTooltip.hide());
+            el.addEventListener('focus',      () => abilityTooltip.show(el));
+            el.addEventListener('blur',       () => abilityTooltip.hide());
+        });
+    } catch (err) {
+        console.error(err);
+        details.innerHTML = 'Failed to load item details.';
+    }
+}
+
+async function renderItemDetails(deferred) {
+    const sections = [];
+
+    if (deferred.category) {
+        const categoryData = await cachedFetch(deferred.category.url, stripItemCategory);
+        const categoryName = getCurrentLanguageName(categoryData);
+        let pocketHtml = '';
+        if (categoryData.pocket) {
+            const pocketName = await cachedFetchNameInCurrentLanguage(categoryData.pocket.url);
+            if (pocketName) pocketHtml = ` <span class="item-pocket-label">(${pocketName} pocket)</span>`;
+        }
+        sections.push(`
+            <div class="item-detail-line">
+                <span class="item-detail-key">Category</span>
+                <span class="item-detail-val">${categoryName}${pocketHtml}</span>
+            </div>`);
+    }
+
+    if (deferred.attributes?.length) {
+        const attrs = await Promise.all(deferred.attributes.map(async a => {
+            const attrData = await cachedFetch(a.url, stripItemAttribute);
+            return {
+                name: getCurrentLanguageName(attrData),
+                desc: attrData.descriptions?.[0]?.description ?? ''
+            };
+        }));
+        const badges = attrs.map(a => {
+            const tooltip = a.desc ? ` data-tooltip="${a.desc.replace(/"/g, '&quot;')}"` : '';
+            return `<span class="item-attribute-badge"${tooltip}>${a.name}</span>`;
+        }).join('');
+        sections.push(`
+            <div class="item-detail-block">
+                <span class="item-detail-key">Attributes</span>
+                <div class="item-attribute-list">${badges}</div>
+            </div>`);
+    }
+
+    if (deferred.fling_effect) {
+        const flingData = await cachedFetch(deferred.fling_effect.url, stripFlingEffect);
+        const flingEffect = flingData.effect_entries?.[0]?.effect ?? '';
+        if (flingEffect) {
+            sections.push(`
+                <div class="item-detail-block">
+                    <span class="item-detail-key">When flung</span>
+                    <p class="item-detail-text">${flingEffect}</p>
+                </div>`);
+        }
+    }
+
+    if (deferred.machines?.length) {
+        // The same TM teaches different moves across games; show the newest (highest machine id).
+        const latest = deferred.machines
+            .map(m => ({ m, id: parseInt(m.machine.url.match(/\/(\d+)\/?$/)?.[1] ?? '0', 10) }))
+            .sort((a, b) => b.id - a.id)[0].m;
+        const machineData = await cachedFetch(latest.machine.url, stripMachine);
+        const moveName = await cachedFetchNameInCurrentLanguage(machineData.move.url);
+        sections.push(`
+            <div class="item-detail-line">
+                <span class="item-detail-key">Teaches</span>
+                <span class="item-detail-val"><a class="evo-target-name" onclick="navigateTo('${machineData.move.name}')">${moveName}</a></span>
+            </div>`);
+    }
+
+    if (deferred.held_by_pokemon?.length) {
+        const links = deferred.held_by_pokemon.map(name =>
+            `<a onclick="navigateTo('${name}')">${name.replace(/-/g, ' ')}</a>`
+        ).join('');
+        sections.push(`
+            <div class="item-detail-block">
+                <span class="item-detail-key">Held by</span>
+                <div class="held-by-list">${links}</div>
+            </div>`);
+    }
+
+    if (deferred.baby_trigger_for) {
+        const chain = await cachedFetch(deferred.baby_trigger_for.url);
+        const babySlug = chain?.chain?.species?.name;
+        if (babySlug) {
+            sections.push(`
+                <div class="item-detail-line">
+                    <span class="item-detail-key">Breeds</span>
+                    <span class="item-detail-val"><a class="evo-target-name" onclick="navigateTo('${babySlug}')">${babySlug.replace(/-/g, ' ')}</a></span>
+                </div>`);
+        }
+    }
+
+    return sections.length ? sections.join('') : '<p class="item-detail-text">No additional details available.</p>';
 }
 
 function getLocalStorageSize() {
