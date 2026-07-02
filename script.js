@@ -1272,6 +1272,14 @@ async function getVersionGroupLabel(versionGroupId) {
     return names.join(' / ');
 }
 
+// version_group appears both as a bare integer id and as a {name, url} resource.
+function versionGroupId(versionGroup) {
+    if (typeof versionGroup === 'object') {
+        return Number(versionGroup.url.match(/\/(\d+)\/?$/)[1]);
+    }
+    return versionGroup;
+}
+
 // Group an evolution target's details by method signature, ignoring version_group/is_default.
 function groupMethodsByGame(details) {
     const groups = new Map();
@@ -1284,7 +1292,7 @@ function groupMethodsByGame(details) {
             groups.set(signature, { detail: d, versionGroups: [], isDefault: false });
         }
         const group = groups.get(signature);
-        if (version_group != null) group.versionGroups.push(version_group);
+        if (version_group != null) group.versionGroups.push(versionGroupId(version_group));
         if (is_default) {
             group.isDefault = true;
             group.detail = d;
