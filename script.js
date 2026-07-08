@@ -29,7 +29,7 @@ const API_VERSION = 'https://pokeapi.co/api/v2/version/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v3.0',
+    version: 'v3.1',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -179,6 +179,21 @@ function stripArrayToCurrentLanguageEntry(data) {
     return [data.findLast(entry => entry?.language?.name === CURRENT_LANGUAGE) ?? data[0] ?? null];
 }
 
+// Moves cut from newer games (e.g. Hidden Power since Sword/Shield) carry a
+// "This move can't be used." placeholder as their flavor text in those games.
+// The English placeholder is stable, so use it to flag the affected version
+// groups and skip them in every language.
+const UNUSABLE_MOVE_FLAVOR = /^This move can[’']t be used\./;
+
+function stripMoveFlavorTextEntries(entries) {
+    if (!Array.isArray(entries)) return null;
+    const unusableGroups = new Set(entries
+        .filter(entry => entry?.language?.name === 'en' && UNUSABLE_MOVE_FLAVOR.test(entry.flavor_text))
+        .map(entry => entry.version_group?.name));
+    const usable = entries.filter(entry => !unusableGroups.has(entry?.version_group?.name));
+    return stripArrayToCurrentLanguageEntry(usable.length ? usable : entries);
+}
+
 // Strip functions to minimize localStorage footprint
 const stripPokemonList = (data) => data.results.map(r => {
     const idMatch = r.url.match(/\/(\d+)\//);
@@ -294,7 +309,7 @@ function stripMove(data) {
         damage_class: data.damage_class,
         effect_chance: data.effect_chance,
         effect_entries: stripArrayToCurrentLanguageEntry(data.effect_entries),
-        flavor_text_entries: stripArrayToCurrentLanguageEntry(data.flavor_text_entries),
+        flavor_text_entries: stripMoveFlavorTextEntries(data.flavor_text_entries),
         generation: data.generation,
         id: data.id,
         meta: data.meta,
