@@ -317,6 +317,7 @@ let autocompleteEnabled = localStorage.getItem('pokechain_autocomplete') === 'tr
 let alwaysShowDetails = localStorage.getItem('pokechain_always_show_details') === 'true';
 let showHeightWeight = localStorage.getItem('pokechain_show_hw') === 'true';
 let alwaysShowForms = localStorage.getItem('pokechain_always_show_forms') === 'true';
+let crossGenExact = localStorage.getItem('pokechain_cross_gen_exact') === 'true';
 let searchStartTime = 0;
 let pendingFormsData = null;
 
@@ -369,6 +370,7 @@ settingAutocomplete.addEventListener('change', () => {
 
 document.body.classList.toggle('show-hw', showHeightWeight);
 document.body.classList.toggle('always-show-details', alwaysShowDetails);
+document.body.classList.toggle('cross-gen-exact', crossGenExact);
 
 const settingAlwaysShowDetails = document.getElementById('settingAlwaysShowDetails');
 settingAlwaysShowDetails.checked = alwaysShowDetails;
@@ -392,6 +394,14 @@ settingShowHW.addEventListener('change', () => {
     showHeightWeight = settingShowHW.checked;
     localStorage.setItem('pokechain_show_hw', showHeightWeight);
     document.body.classList.toggle('show-hw', showHeightWeight);
+});
+
+const settingCrossGenExact = document.getElementById('settingCrossGenExact');
+settingCrossGenExact.checked = crossGenExact;
+settingCrossGenExact.addEventListener('change', () => {
+    crossGenExact = settingCrossGenExact.checked;
+    localStorage.setItem('pokechain_cross_gen_exact', crossGenExact);
+    document.body.classList.toggle('cross-gen-exact', crossGenExact);
 });
 
 const settingAlwaysShowForms = document.getElementById('settingAlwaysShowForms');
@@ -973,7 +983,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id-row">
                                 <span class="pokemon-id">#${String(pId).padStart(3, '0')}</span>
-                                ${generation ? `<span class="pokemon-gen">· Gen ${generation.name.split('-').slice(1).join('-').toUpperCase()} ·</span>` : ''}
+                                ${generation ? `<span class="pokemon-gen">· Gen ${formatGenLabel(generation)} ·</span>` : ''}
                                 <button class="btn-stats-icon btn-toggle-details" id="${panelBtnId}"
                                     onclick="toggleDetailsPanel('${panelId}', '${panelBtnId}')"
                                     aria-expanded="false" title="Base Stats &amp; Abilities">
@@ -1003,12 +1013,21 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                     </div>
                     <div class="divider"></div>
                     <div class="evolution-section">
-                        ${await renderEvolutions(evoInfo, pName)}
+                        ${await renderEvolutions(evoInfo, pName, generation)}
                     </div>
                     <div class="details-panel" id="${panelId}"
                         data-pkmn-details="${encodedDetails}"></div>
                 </div>
             `;
+}
+
+function formatGenLabel(generation) {
+    return generation.name.split('-').slice(1).join('-').toUpperCase();
+}
+
+function getGenerationId(generation) {
+    const match = generation?.url?.match(/\/generation\/(\d+)\//);
+    return match ? parseInt(match[1]) : null;
 }
 
 function getChainDepth(chainNode) {
@@ -1048,7 +1067,7 @@ async function findMyEvos(chainNode, speciesData, pokemonData) {
     return res;
 }
 
-async function renderEvolutions(evoInfo, pName) {
+async function renderEvolutions(evoInfo, pName, currentGeneration = null) {
     if (!evoInfo || evoInfo.length === 0) {
         return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
     }
@@ -1063,13 +1082,33 @@ async function renderEvolutions(evoInfo, pName) {
             byForm.get(key).push(d);
         }
         for (const [formName, details] of byForm) {
-            renderTargets.push({ navName: formName ?? node.species.name, details });
+            renderTargets.push({ navName: formName ?? node.species.name, speciesName: node.species.name, details });
         }
     }
 
     const branches = await Promise.all(
         renderTargets.map(async (target, idx) => {
             const targetName = target.navName;
+
+            // Cross-gen highlight: flag evolutions into species introduced in a later
+            // generation than the current Pokémon (e.g. Seadra Gen I → Kingdra Gen II).
+            let crossGenBadge = '';
+            let crossGenClass = '';
+            const currentGenId = getGenerationId(currentGeneration);
+            if (currentGenId !== null) {
+                const evolvedSpecies = await cachedFetch(API_SPECIES + target.speciesName, stripSpecies);
+                const evolvedGenId = getGenerationId(evolvedSpecies.generation);
+                if (evolvedGenId !== null && evolvedGenId > currentGenId) {
+                    crossGenClass = ' evo-branch--cross-gen';
+                    crossGenBadge = `
+                        <span class="evo-cross-gen-badge" title="This evolution was introduced in a later generation. You can toggle showing the exact generation in the settings menu.">
+                            <span class="cg-generic">Later Gen</span>
+                            <span class="cg-exact">Gen ${formatGenLabel(evolvedSpecies.generation)}+</span>
+                        </span>
+                    `;
+                }
+            }
+
             const methodGroups = groupMethodsByGame(target.details);
 
             let current = methodGroups.filter(g => g.isDefault);
@@ -1111,10 +1150,11 @@ async function renderEvolutions(evoInfo, pName) {
 
             const evoId = idx + pName + targetName;
             return `
-                <div class="evo-branch">
+                <div class="evo-branch${crossGenClass}">
                     <div class="evo-row">
                         <div class="evo-card">
                             <div class="evo-name-row" id="evoNameRow-${evoId}">
+                                
                                 <button class="btn-reveal-evo" onclick="toggleEvoReveal('${evoId}', '${targetName}')" id="evoToggleBtn-${evoId}">
                                     Show Evolution
                                 </button>
@@ -1123,6 +1163,7 @@ async function renderEvolutions(evoInfo, pName) {
                                     <a class="evo-target-name" onclick="navigateTo('${targetName}')">${targetName}</a>
                                 </span>
                             </div>
+                            ${crossGenBadge}
                             <div class="spoiler-wrapper">
                                 ${spoilerBoxes}
                             </div>
@@ -1136,9 +1177,17 @@ async function renderEvolutions(evoInfo, pName) {
     return branches.join('');
 }
 
+// The API returns version_group either as a bare integer id or as a {name, url}
+// resource; normalize both shapes to the numeric id.
+function versionGroupId(versionGroup) {
+    if (typeof versionGroup === 'number') return versionGroup;
+    const match = versionGroup?.url?.match(/\/version-group\/(\d+)\//);
+    return match ? parseInt(match[1]) : null;
+}
+
 // Resolve a version_group id to a localized "Game / Game" label (all fetches cached).
-async function getVersionGroupLabel(versionGroupId) {
-    const vg = await cachedFetch(API_VERSION_GROUP + versionGroupId, stripVersionGroup);
+async function getVersionGroupLabel(vgId) {
+    const vg = await cachedFetch(API_VERSION_GROUP + vgId, stripVersionGroup);
     const names = await Promise.all(
         vg.versions.map(v => cachedFetchNameInCurrentLanguage(v.url))
     );
@@ -1157,7 +1206,8 @@ function groupMethodsByGame(details) {
             groups.set(signature, { detail: d, versionGroups: [], isDefault: false });
         }
         const group = groups.get(signature);
-        if (version_group != null) group.versionGroups.push(version_group);
+        const vgId = versionGroupId(version_group);
+        if (vgId != null) group.versionGroups.push(vgId);
         if (is_default) {
             group.isDefault = true;
             group.detail = d;
