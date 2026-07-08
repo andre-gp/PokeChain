@@ -121,7 +121,11 @@ async function cachedFetch(url, stripFn) {
 
         try {
             const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                const httpError = new Error(`HTTP ${res.status}`);
+                httpError.status = res.status;
+                throw httpError;
+            }
 
             const afterFetch = DEBUG ? performance.now() : 0;
 
@@ -334,6 +338,7 @@ let showHeightWeight = localStorage.getItem('pokechain_show_hw') === 'true';
 let alwaysShowForms = localStorage.getItem('pokechain_always_show_forms') === 'true';
 let crossGenExact = localStorage.getItem('pokechain_cross_gen_exact') === 'true';
 let searchStartTime = 0;
+let searchSeq = 0;
 let pendingFormsData = null;
 
 const HISTORY_KEY = 'pokechain_history';
@@ -440,7 +445,13 @@ function closeSettings() {
 function navigateTo(name) {
     if (teamBuilderOpen) closeTeamBuilder();
     const cleanName = name ? name.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-') : '';
-    window.location.hash = cleanName;
+    if (window.location.hash.replace('#', '') === cleanName) {
+        // Same hash fires no hashchange event, so run the route directly
+        // (lets the user retry a failed search by pressing Enter again)
+        handleRoute();
+    } else {
+        window.location.hash = cleanName;
+    }
 }
 
 // Handle Route Change
@@ -482,6 +493,7 @@ window.addEventListener('DOMContentLoaded', handleRoute);
 function clearResults() {
     searchInput.value = '';
     resultsDiv.innerHTML = '';
+    pendingFormsData = null;
     errorMsg.classList.remove('visible');
 }
 
@@ -744,6 +756,10 @@ async function search(query) {
         .replace(/[^a-z0-9-]/g, ''); // Remove everything except letters, numbers, and dashes
     if (!cleanQuery) return;
 
+    // Stale-response guard: only the latest search may touch the DOM,
+    // history, or the error message.
+    const seq = ++searchSeq;
+
     if (searchInput.value !== cleanQuery) {
         searchInput.value = cleanQuery;
     }
@@ -752,6 +768,7 @@ async function search(query) {
     activeSuggestionIndex = -1;
     errorMsg.classList.remove('visible');
     resultsDiv.innerHTML = '';
+    pendingFormsData = null;
     searchSpinner.classList.add('active');
     if (DEBUG) searchStartTime = performance.now();
 
@@ -772,7 +789,9 @@ async function search(query) {
             const pokemonData = result.value;
             const speciesData = await cachedFetch(API_SPECIES + pokemonData.species.name, stripSpecies);
             const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
-            await renderResults(speciesData, pokemonData, evoChainData);
+            if (seq !== searchSeq) return;
+            await renderResults(speciesData, pokemonData, evoChainData, seq);
+            if (seq !== searchSeq) return;
             addToHistory(cleanQuery);
             return;
         }
@@ -786,34 +805,45 @@ async function search(query) {
 
                 if (targetName !== cleanQuery) {
                     console.log(`[Redirect] "${cleanQuery}" → "${targetName}"`);
-                    navigateTo(targetName);
+                    if (seq === searchSeq) navigateTo(targetName);
                 } else {
                     // If the species is found before the pokémon, and it shares the same name,
                     // we need to render directly (e.g: eevee (pokémon) === eevee (species))
                     // because the hash won't change
                     const pokemonData = await cachedFetch(API_POKEMON + targetName, stripPokemon);
                     const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
-                    await renderResults(speciesData, pokemonData, evoChainData);
+                    if (seq !== searchSeq) return;
+                    await renderResults(speciesData, pokemonData, evoChainData, seq);
+                    if (seq !== searchSeq) return;
                     addToHistory(cleanQuery);
                 }
 
                 return;
             }
 
+            if (seq !== searchSeq) return;
             showError(`Pokémon "${cleanQuery}" not found. Please check the spelling.`);
             return;
         }
 
         if (result.type === "move") {
-            await renderMoveResults(result.value);
+            if (seq !== searchSeq) return;
+            await renderMoveResults(result.value, null, seq);
+            if (seq !== searchSeq) return;
             addToHistory(cleanQuery);
             return;
         }
     } catch (err) {
+        if (seq !== searchSeq) return;
         console.error(err);
-        showError(`"${cleanQuery}" not found as a Pokémon, Species, or Move. Please check the spelling.`);
+        const errors = err instanceof AggregateError ? err.errors : [err];
+        if (errors.every(e => e?.status === 404)) {
+            showError(`"${cleanQuery}" not found as a Pokémon, Species, or Move. Please check the spelling.`);
+        } else {
+            showError(`Failed to load "${cleanQuery}". Check your connection and press Enter to try again.`);
+        }
     } finally {
-        searchSpinner.classList.remove('active');
+        if (seq === searchSeq) searchSpinner.classList.remove('active');
     }
 }
 
@@ -839,7 +869,7 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth, speciesData.generation);
 }
 
-async function renderResults(speciesData, pokemonData, evoChainData) {
+async function renderResults(speciesData, pokemonData, evoChainData, seq = undefined) {
     const pName = getCurrentLanguageName(speciesData);
     const pId = pokemonData.id;
     const pSprite = pokemonData.sprite;
@@ -881,6 +911,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         v => !HIDDEN_FORM_SUFFIXES.some(suffix => v.pokemon.name.includes(suffix))
     );
 
+    let newPendingFormsData = null;
     if (hasRevealableVarieties) {
         if (alwaysShowForms) {
             const formResults = (await Promise.all(
@@ -888,7 +919,7 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
             )).filter(r => r !== '');
             html += `<div id="otherFormsContainer">${formResults.join('')}</div>`;
         } else {
-            pendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
+            newPendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
             html += `
                 <div class="reveal-forms-wrapper" id="revealFormsWrapper">
                     <button class="btn-reveal-forms" onclick="showAlternativeForms()">
@@ -900,6 +931,9 @@ async function renderResults(speciesData, pokemonData, evoChainData) {
         }
     }
 
+    // A newer search may have started during the awaits above
+    if (seq !== undefined && seq !== searchSeq) return;
+    pendingFormsData = newPendingFormsData;
     resultsDiv.innerHTML = html;
     if (alwaysShowDetails) {
         document.querySelectorAll('.details-panel').forEach(p => {
@@ -928,6 +962,7 @@ async function revealAndScrollToForm(speciesData, pokemonData) {
 async function showAlternativeForms() {
     if (!pendingFormsData) return;
     const wrapper = document.getElementById('revealFormsWrapper');
+    if (!wrapper) { pendingFormsData = null; return; }
     const btn = wrapper.querySelector('.btn-reveal-forms');
     btn.disabled = true;
     const { varieties, speciesData, evoChainData } = pendingFormsData;
@@ -1741,7 +1776,7 @@ window.addEventListener('keydown', function (event) {
     }
 });
 
-async function renderMoveResults(moveData, targetEl = null) {
+async function renderMoveResults(moveData, targetEl = null, seq = undefined) {
     const moveName = getCurrentLanguageName(moveData);
     const typeName = await cachedFetchNameInCurrentLanguage(moveData.type.url);
     const typeSlug = moveData.type.name;
@@ -1873,6 +1908,8 @@ async function renderMoveResults(moveData, targetEl = null) {
         </div>
     `;
 
+    // A newer search may have started during the awaits above
+    if (!targetEl && seq !== undefined && seq !== searchSeq) return;
     (targetEl || resultsDiv).innerHTML = html;
 }
 
