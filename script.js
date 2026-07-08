@@ -607,6 +607,22 @@ function fuzzyDistance(query, name) {
     return Math.min(full, prefix);
 }
 
+// If a failed query matches exactly one known Pokémon or move (substring or
+// fuzzy, same rules as the suggestions), return that name so the search can
+// redirect instead of erroring — works even with autocomplete turned off.
+function resolveSingleMatch(query) {
+    const threshold = Math.max(1, Math.floor(query.length / 2.5));
+    let match = null;
+    const names = [...allPokemonNames.map(p => p.name), ...allMoveNames];
+    for (const name of names) {
+        if (name.includes(query) || fuzzyDistance(query, name) <= threshold) {
+            if (match !== null && match !== name) return null;
+            match = name;
+        }
+    }
+    return match;
+}
+
 function showSuggestions(query) {
     const LIMIT = 5;
     const threshold = Math.max(1, Math.floor(query.length / 2.5));
@@ -842,6 +858,12 @@ async function search(query) {
         console.error(err);
         const errors = err instanceof AggregateError ? err.errors : [err];
         if (errors.every(e => e?.status === 404)) {
+            const match = resolveSingleMatch(cleanQuery);
+            if (match) {
+                console.log(`[Fuzzy redirect] "${cleanQuery}" → "${match}"`);
+                navigateTo(match);
+                return;
+            }
             showError(`"${cleanQuery}" not found as a Pokémon, Species, or Move. Please check the spelling.`);
         } else {
             showError(`Failed to load "${cleanQuery}". Check your connection and press Enter to try again.`);
