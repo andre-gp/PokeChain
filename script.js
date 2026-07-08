@@ -199,10 +199,14 @@ function stripMoveFlavorTextEntries(entries) {
 }
 
 // Strip functions to minimize localStorage footprint
-const stripPokemonList = (data) => data.results.map(r => {
-    const idMatch = r.url.match(/\/(\d+)\//);
-    return { name: r.name, id: idMatch ? parseInt(idMatch[1]) : 0 };
-});
+// Form varieties carry ids above 10000; keep only species-level entries so the
+// autocomplete list matches the National Dex regardless of how many exist.
+const stripPokemonList = (data) => data.results
+    .map(r => {
+        const idMatch = r.url.match(/\/(\d+)\//);
+        return { name: r.name, id: idMatch ? parseInt(idMatch[1]) : 0 };
+    })
+    .filter(p => p.id < 10000);
 
 const stripMoveList = (data) => data.results.map(r => r.name);
 
@@ -500,7 +504,7 @@ function clearResults() {
 // Fetch all pokemon list for autocomplete
 async function loadPokemonList() {
     try {
-        const data = await cachedFetch('https://pokeapi.co/api/v2/pokemon?limit=1025', stripPokemonList);
+        const data = await cachedFetch('https://pokeapi.co/api/v2/pokemon?limit=100000', stripPokemonList);
         allPokemonNames = data;
     } catch (e) {
         console.warn('Failed to load pokemon list for autocomplete', e);
@@ -509,7 +513,7 @@ async function loadPokemonList() {
 
 async function loadMoveList() {
     try {
-        const data = await cachedFetch('https://pokeapi.co/api/v2/move?limit=1000', stripMoveList);
+        const data = await cachedFetch('https://pokeapi.co/api/v2/move?limit=100000', stripMoveList);
         allMoveNames = data;
     } catch (e) {
         console.warn('Failed to load move list for autocomplete', e);
