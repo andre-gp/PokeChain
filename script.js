@@ -1177,7 +1177,7 @@ async function renderEvolutions(evoInfo, pName, currentGeneration = null) {
                 if (evolvedGenId !== null && evolvedGenId > currentGenId) {
                     crossGenClass = ' evo-branch--cross-gen';
                     crossGenBadge = `
-                        <span class="evo-cross-gen-badge" title="This evolution was introduced in a later generation. You can toggle showing the exact generation in the settings menu.">
+                        <span class="evo-cross-gen-badge" tabindex="0" data-tooltip="This evolution was introduced in a later generation. You can toggle showing the exact generation in the settings menu.">
                             <span class="cg-generic">Later Gen</span>
                             <span class="cg-exact">Gen ${formatGenLabel(evolvedSpecies.generation)}+</span>
                         </span>
@@ -1992,6 +1992,43 @@ const abilityTooltip = (() => {
     }
 
     return { show, hide };
+})();
+
+// Cross-gen badge tooltip: delegated and shown instantly on hover/focus.
+(() => {
+    let shownBadge = null;
+    let lastPointerType = 'mouse';
+
+    function show(badge) { abilityTooltip.show(badge); shownBadge = badge; }
+    function hide() { abilityTooltip.hide(); shownBadge = null; }
+    function badgeFrom(e) { return e.target.closest?.('.evo-cross-gen-badge'); }
+
+    document.addEventListener('pointerover', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        const badge = badgeFrom(e);
+        if (badge && badge !== shownBadge) show(badge);
+    });
+    document.addEventListener('pointerout', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        const badge = badgeFrom(e);
+        if (badge && !badge.contains(e.relatedTarget)) hide();
+    });
+    document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; });
+    document.addEventListener('click', (e) => {
+        const badge = badgeFrom(e);
+        if (badge && lastPointerType !== 'mouse') {
+            shownBadge === badge ? hide() : show(badge);
+        } else if (!badge && shownBadge) {
+            hide();
+        }
+    });
+    document.addEventListener('focusin', (e) => {
+        const badge = badgeFrom(e);
+        if (badge && badge.matches(':focus-visible')) show(badge);
+    });
+    document.addEventListener('focusout', (e) => {
+        if (badgeFrom(e)) hide();
+    });
 })();
 
 if (DEBUG) {
