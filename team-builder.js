@@ -795,8 +795,12 @@ async function wireAbilityTooltip(teamId, slotIndex) {
     try {
         const abilityData = await cachedFetch(API_ABILITY + abilityName, stripAbility);
         const shortEffect = abilityData.effect_entries?.[0]?.short_effect ?? '';
-        if (!shortEffect) return;
-        btn.dataset.tooltip = shortEffect;
+        const effect = abilityData.effect_entries?.[0]?.effect ?? '';
+        const summary = shortEffect || effect;
+        if (!summary) return;
+        // Both texts are stored; abilityTooltip picks one based on the current setting.
+        btn.dataset.tooltip = summary;
+        if (effect && effect !== summary) btn.dataset.tooltipFull = effect;
         btn.tabIndex = 0;
         btn.addEventListener('mouseenter', () => abilityTooltip.show(btn));
         btn.addEventListener('mouseleave', () => abilityTooltip.hide());

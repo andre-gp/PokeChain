@@ -341,6 +341,7 @@ let alwaysShowDetails = localStorage.getItem('pokechain_always_show_details') ==
 let showHeightWeight = localStorage.getItem('pokechain_show_hw') === 'true';
 let alwaysShowForms = localStorage.getItem('pokechain_always_show_forms') === 'true';
 let crossGenExact = localStorage.getItem('pokechain_cross_gen_exact') === 'true';
+let detailedAbility = localStorage.getItem('pokechain_detailed_ability') === 'true';
 let searchStartTime = 0;
 let searchSeq = 0;
 let pendingFormsData = null;
@@ -410,6 +411,13 @@ settingAlwaysShowDetails.addEventListener('change', () => {
     } else {
         document.querySelectorAll('.details-panel').forEach(p => p.classList.remove('visible'));
     }
+});
+
+const settingDetailedAbility = document.getElementById('settingDetailedAbility');
+settingDetailedAbility.checked = detailedAbility;
+settingDetailedAbility.addEventListener('change', () => {
+    detailedAbility = settingDetailedAbility.checked;
+    localStorage.setItem('pokechain_detailed_ability', detailedAbility);
 });
 
 const settingShowHW = document.getElementById('settingShowHW');
@@ -1400,6 +1408,7 @@ async function loadDetailsPanel(panel) {
             return {
                 displayName: getCurrentLanguageName(abilityData),
                 shortEffect: abilityData.effect_entries?.[0]?.short_effect ?? '',
+                effect: abilityData.effect_entries?.[0]?.effect ?? '',
                 is_hidden: a.is_hidden
             };
         })
@@ -1407,8 +1416,12 @@ async function loadDetailsPanel(panel) {
 
     const abilitiesHtml = resolvedAbilities.map(a => {
         const tag = a.is_hidden ? ' <span class="ability-hidden-tag">(hidden)</span>' : '';
-        const tooltip = a.shortEffect ? ` data-tooltip="${a.shortEffect.replace(/"/g, '&quot;')}"` : '';
-        return `<li class="ability-item"${tooltip}>${a.displayName}${tag}</li>`;
+        const esc = s => s.replace(/"/g, '&quot;');
+        const summary = a.shortEffect || a.effect;
+        if (!summary) return `<li class="ability-item">${a.displayName}${tag}</li>`;
+        // Both texts are stored; abilityTooltip picks one based on the current setting.
+        const full = a.effect && a.effect !== summary ? ` data-tooltip-full="${esc(a.effect)}"` : '';
+        return `<li class="ability-item" data-tooltip="${esc(summary)}"${full}>${a.displayName}${tag}</li>`;
     }).join('');
 
     panel.innerHTML = `
@@ -1965,15 +1978,30 @@ const abilityTooltip = (() => {
     document.body.appendChild(el);
 
     function show(target) {
-        el.textContent = target.dataset.tooltip;
+        const full = detailedAbility ? target.dataset.tooltipFull : '';
+        el.classList.toggle('ability-tooltip--detailed', !!full);
+        if (full) {
+            el.textContent = '';
+            const headEl = document.createElement('div');
+            headEl.className = 'ability-tooltip__heading';
+            headEl.textContent = target.dataset.tooltip;
+            const bodyEl = document.createElement('div');
+            bodyEl.className = 'ability-tooltip__body';
+            bodyEl.textContent = full;
+            el.append(headEl, bodyEl);
+        } else {
+            el.textContent = target.dataset.tooltip;
+        }
         el.classList.add('visible');
-        position(target);
+        position(target, !!full);
     }
 
-    function position(target) {
+    function position(target, detailed) {
         const rect = target.getBoundingClientRect();
         const margin = 8;
-        const tw = Math.min(220, window.innerWidth - 16);
+        const tw = Math.min(detailed ? 300 : 220, window.innerWidth - 16);
+        // Width first: the height depends on how the text wraps at this width.
+        el.style.width = tw + 'px';
         const th = el.offsetHeight;
 
         let left = rect.left + rect.width / 2 - tw / 2;
@@ -1982,9 +2010,8 @@ const abilityTooltip = (() => {
         left = Math.max(margin, Math.min(left, window.innerWidth - tw - margin));
         if (top < margin) top = rect.bottom + margin;
 
-        el.style.left  = left + 'px';
-        el.style.top   = top  + 'px';
-        el.style.width = tw   + 'px';
+        el.style.left = left + 'px';
+        el.style.top  = top  + 'px';
     }
 
     function hide() {

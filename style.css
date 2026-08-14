@@ -1584,7 +1584,7 @@ button.type-relation-badge:active {
     font-size: 0.78rem;
     font-weight: 400;
     text-transform: none;
-    white-space: normal;
+    white-space: pre-line;
     line-height: 1.45;
     pointer-events: none;
     opacity: 0;
@@ -1594,6 +1594,20 @@ button.type-relation-badge:active {
 
 .ability-tooltip.visible {
     opacity: 1;
+}
+
+.ability-tooltip--detailed {
+    width: 300px;
+}
+
+.ability-tooltip__heading {
+    font-weight: 600;
+}
+
+.ability-tooltip__body {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
 }
 
 @media (max-width: 520px) {
@@ -1616,6 +1630,10 @@ button.type-relation-badge:active {
     flex-direction: column;
     gap: 16px;
     margin-top: 8px;
+}
+
+.settings-section + .settings-section {
+    margin-top: 20px;
 }
 
 .settings-section-title {
