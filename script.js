@@ -447,10 +447,17 @@ settingAlwaysShowForms.addEventListener('change', () => {
 });
 
 const TUTORIAL_KEY = 'pokechain_tutorial_seen';
+const TUTORIAL_VISIT_COUNT_KEY = 'pokechain_pokemon_visits';
+const TUTORIAL_VISIT_THRESHOLD = 3;
 
 function maybeShowTutorial() {
-    if (localStorage.getItem(TUTORIAL_KEY) === 'true') return;
-    document.body.classList.add('tutorial');
+    const visitCount = Number(localStorage.getItem(TUTORIAL_VISIT_COUNT_KEY)) || 0;
+    const nextVisitCount = visitCount + 1;
+    localStorage.setItem(TUTORIAL_VISIT_COUNT_KEY, nextVisitCount);
+
+    if (localStorage.getItem(TUTORIAL_KEY) !== 'true' && nextVisitCount >= TUTORIAL_VISIT_THRESHOLD) {
+        document.body.classList.add('tutorial');
+    }
 }
 
 function dismissTutorial() {
@@ -515,7 +522,6 @@ window.addEventListener('hashchange', handleRoute);
 
 // Handle initial load
 window.addEventListener('DOMContentLoaded', handleRoute);
-window.addEventListener('DOMContentLoaded', maybeShowTutorial);
 
 function clearResults() {
     searchInput.value = '';
@@ -990,6 +996,7 @@ async function renderResults(speciesData, pokemonData, evoChainData, seq = undef
             loadDetailsPanel(p);
         });
     }
+    maybeShowTutorial();
     await revealAndScrollToForm(speciesData, pokemonData);
     if (DEBUG) console.log(`[TOTAL] Search → render: ${(performance.now() - searchStartTime).toFixed(1)} ms`);
 }
