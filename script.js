@@ -2039,14 +2039,14 @@ const abilityTooltip = (() => {
     return { show, hide };
 })();
 
-// Cross-gen badge tooltip: delegated and shown instantly on hover/focus.
+const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help';
 (() => {
     let shownBadge = null;
     let lastPointerType = 'mouse';
 
     function show(badge) { abilityTooltip.show(badge); shownBadge = badge; }
     function hide() { abilityTooltip.hide(); shownBadge = null; }
-    function badgeFrom(e) { return e.target.closest?.('.evo-cross-gen-badge'); }
+    function badgeFrom(e) { return e.target.closest?.(TOOLTIP_TARGETS); }
 
     document.addEventListener('pointerover', (e) => {
         if (e.pointerType !== 'mouse') return;
@@ -2058,15 +2058,16 @@ const abilityTooltip = (() => {
         const badge = badgeFrom(e);
         if (badge && !badge.contains(e.relatedTarget)) hide();
     });
-    document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; });
+    document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; }, true);
     document.addEventListener('click', (e) => {
         const badge = badgeFrom(e);
+        if (badge?.classList.contains('setting-help')) e.preventDefault();
         if (badge && lastPointerType !== 'mouse') {
             shownBadge === badge ? hide() : show(badge);
         } else if (!badge && shownBadge) {
             hide();
         }
-    });
+    }, true);
     document.addEventListener('focusin', (e) => {
         const badge = badgeFrom(e);
         if (badge && badge.matches(':focus-visible')) show(badge);

@@ -1589,7 +1589,8 @@ button.type-relation-badge:active {
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s;
-    z-index: 100;
+    /* Above the modals (z-index 1000) so settings help tooltips stay visible. */
+    z-index: 1100;
 }
 
 .ability-tooltip.visible {
@@ -1706,7 +1707,7 @@ body.tutorial .tutorial-tip {
    ========================================= */
 
 .settings-modal-content {
-    max-width: 400px;
+    max-width: 430px;
 }
 
 .settings-section {
@@ -1719,6 +1720,34 @@ body.tutorial .tutorial-tip {
 .settings-section + .settings-section {
     margin-top: 20px;
 }
+
+/* Help icon for a setting (?)*/
+.setting-help {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    margin-left: 6px;
+    vertical-align: 1px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+    .setting-help:hover,
+    .setting-help:focus-visible {
+        color: var(--accent);
+        border-color: var(--accent);
+    }
 
 .settings-section-title {
     font-size: 0.75rem;
