@@ -461,7 +461,6 @@ function maybeShowTutorial() {
 }
 
 function dismissTutorial() {
-    if (!document.body.classList.contains('tutorial')) return;
     document.body.classList.remove('tutorial');
     localStorage.setItem(TUTORIAL_KEY, 'true');
 }
