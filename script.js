@@ -446,7 +446,21 @@ settingAlwaysShowForms.addEventListener('change', () => {
     }
 });
 
+const TUTORIAL_KEY = 'pokechain_tutorial_seen';
+
+function maybeShowTutorial() {
+    if (localStorage.getItem(TUTORIAL_KEY) === 'true') return;
+    document.body.classList.add('tutorial');
+}
+
+function dismissTutorial() {
+    if (!document.body.classList.contains('tutorial')) return;
+    document.body.classList.remove('tutorial');
+    localStorage.setItem(TUTORIAL_KEY, 'true');
+}
+
 function openSettings() {
+    dismissTutorial();
     document.getElementById('settingsModal').style.display = 'block';
 }
 function closeSettings() {
@@ -501,6 +515,7 @@ window.addEventListener('hashchange', handleRoute);
 
 // Handle initial load
 window.addEventListener('DOMContentLoaded', handleRoute);
+window.addEventListener('DOMContentLoaded', maybeShowTutorial);
 
 function clearResults() {
     searchInput.value = '';
@@ -1797,6 +1812,9 @@ window.addEventListener('click', function (event) {
 // Close modal when pressing the Escape key
 window.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
+        if (document.body.classList.contains('tutorial')) {
+            dismissTutorial(); return;
+        }
         const moveInfoModal = document.getElementById('moveInfoModal');
         if (moveInfoModal && moveInfoModal.style.display === 'block') {
             closeMoveInfoModal(); return;

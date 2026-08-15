@@ -1617,6 +1617,90 @@ button.type-relation-badge:active {
     }
 }
 
+/* First-visit tutorial */
+.tutorial-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.3s ease;
+}
+
+body.tutorial .tutorial-overlay {
+    display: block;
+}
+
+/* Lift the settings button out of the dimmed area */
+body.tutorial #settingsBtn {
+    z-index: 901;
+    background: var(--bg-primary);
+    border-color: var(--accent);
+    color: var(--accent);
+    animation: tutorialPulse 2s ease-in-out infinite;
+}
+
+@keyframes tutorialPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+
+    50% {
+        box-shadow: 0 0 0 8px rgba(124, 111, 232, 0);
+    }
+}
+
+.tutorial-tip {
+    display: none;
+    position: absolute;
+    top: calc(50% + 30px);
+    right: 0;
+    z-index: 901;
+    width: min(320px, calc(100vw - 40px));
+    padding: 16px 18px;
+    text-align: left;
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+    animation: fadeSlideUp 0.35s ease;
+}
+
+body.tutorial .tutorial-tip {
+    display: block;
+}
+
+    .tutorial-tip::before {
+        content: '';
+        position: absolute;
+        top: -6px;
+        right: 12px;
+        width: 10px;
+        height: 10px;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--accent);
+        border-left: 1px solid var(--accent);
+        transform: rotate(45deg);
+    }
+
+.tutorial-tip-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+}
+
+.tutorial-tip-text {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+    .tutorial-tip-text strong {
+        color: var(--text-primary);
+    }
+
 /* =========================================
    Settings Modal
    ========================================= */
