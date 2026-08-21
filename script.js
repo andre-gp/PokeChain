@@ -1113,6 +1113,13 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                             <div class="pokemon-hw">${(height / 10).toFixed(1)} m &nbsp;·&nbsp; ${(weight / 10).toFixed(1)} kg</div>` : ''}
                             <div class="type-badges">
                                 ${pTypes.map(t => `<button class="type-badge" style="background:${TYPE_COLORS[t.slug] || '#888'}" onclick="showTypeDetails('${t.slug}')">${t.name}</button>`).join('')}
+                                ${pTypes.length > 1 ? `
+                                <button class="btn-combined-types" onclick='showCombinedTypeDetails(${JSON.stringify(pTypes.map(t => t.slug))})'
+                                    title="Combined type defense" aria-label="Show combined ${pTypes.map(t => t.name).join(' and ')} defensive effectiveness">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3Z"/>
+                                    </svg>
+                                </button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -1777,14 +1784,14 @@ async function showTypeDetails(typeName) {
 
 
         const attackerHtml =
-            buildSection('Super Effective (2x)', doubleTo, 'good') +
-            buildSection('Not Very Effective (0.5x)', halfTo, 'bad') +
-            buildSection('No Effect (0x)', noTo, 'none');
+            buildSection('(2x) Super Effective', doubleTo, 'good') +
+            buildSection('(0.5x) Not Very Effective', halfTo, 'bad') +
+            buildSection('(0x) No Effect', noTo, 'none');
 
         const defenderHtml =
-            buildSection('Weak To (2x)', doubleFrom, 'good') +
-            buildSection('Resists (0.5x)', halfFrom, 'bad') +
-            buildSection('Immune (0x)', noFrom, 'none');
+            buildSection('(2x) Weak To', doubleFrom, 'good') +
+            buildSection('(0.5x) Resists', halfFrom, 'bad') +
+            buildSection('(0x) Immune', noFrom, 'none');
 
         body.innerHTML = `
             <div class="type-modal-body-wrapper">
@@ -1803,6 +1810,87 @@ async function showTypeDetails(typeName) {
         console.error(e);
     }
 }
+
+async function showCombinedTypeDetails(typeNames) {
+    if (!Array.isArray(typeNames) || typeNames.length < 2) return;
+
+    const modal = document.getElementById('typeModal');
+    const title = document.getElementById('typeModalTitle');
+    const body = document.getElementById('typeModalBody');
+    const modalContent = modal.querySelector('.type-modal-content');
+
+    title.innerHTML = `
+        <span class="combined-type-shield" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3Z"/>
+            </svg>
+        </span>
+        <span>Combined Defense</span>`;
+    body.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
+    modal.style.display = 'block';
+    modalContent.style.borderLeft = '3px solid var(--text-secondary)';
+
+    try {
+        const typeData = await Promise.all(typeNames.map(typeName =>
+            cachedFetch(`https://pokeapi.co/api/v2/type/${typeName}/`, stripType)
+        ));
+        const matchups = new Map();
+
+        const applyRelations = (relations, multiplier) => {
+            relations.forEach(type => {
+                const matchup = matchups.get(type.name) || { type, multiplier: 1 };
+                matchup.multiplier *= multiplier;
+                matchups.set(type.name, matchup);
+            });
+        };
+
+        typeData.forEach(type => {
+            applyRelations(type.damage_relations.double_damage_from, 2);
+            applyRelations(type.damage_relations.half_damage_from, 0.5);
+            applyRelations(type.damage_relations.no_damage_from, 0);
+        });
+
+        const localizedTypeNames = typeData.map(getCurrentLanguageName);
+        title.innerHTML = typeData.map((type, index) => `
+            ${index > 0 ? '<span class="combined-type-plus">+</span>' : ''}
+            <span class="type-badge" style="background:${TYPE_COLORS[type.name] || '#888'}">${localizedTypeNames[index]}</span>
+        `).join('');
+
+        const renderMultiplierGroup = async (multiplier, label, relationClass) => {
+            const entries = [...matchups.values()].filter(matchup => matchup.multiplier === multiplier);
+            if (entries.length === 0) return '';
+
+            const badges = await Promise.all(entries.map(async ({ type }) => {
+                const localizedName = await cachedFetchNameInCurrentLanguage(type.url);
+                return `<button class="type-relation-badge" style="background:${TYPE_COLORS[type.name] || '#888'}" onclick="showTypeDetails('${type.name}')">${localizedName}</button>`;
+            }));
+
+            return `
+                <div class="type-relation-group relation-${relationClass}">
+                    <h4>${label}</h4>
+                    <div class="type-relation-badges">${badges.join('')}</div>
+                </div>`;
+        };
+
+        const groups = await Promise.all([
+            renderMultiplierGroup(4, '(4x)', 'bad'),
+            renderMultiplierGroup(2, '(2x)', 'bad'),
+            renderMultiplierGroup(0.5, '(0.5x)', 'good'),
+            renderMultiplierGroup(0.25, '(0.25x)', 'good'),
+            renderMultiplierGroup(0, '(0x)', 'none')
+        ]);
+
+        body.innerHTML = `
+            <div class="combined-type-defense">
+                <h3 class="column-title">Defender</h3>
+                ${groups.join('') || '<p class="combined-type-intro">Neutral to all types.</p>'}
+            </div>`;
+    } catch (e) {
+        body.innerHTML = '<p style="color:var(--danger); text-align:center; padding: 20px;">Failed to load combined type details.</p>';
+        console.error(e);
+    }
+}
+
 function closeTypeModal() {
     document.getElementById('typeModal').style.display = 'none';
 }

@@ -456,6 +456,7 @@ body.always-show-details .btn-toggle-details { display: none; }
 
 .type-badges {
     display: flex;
+    align-items: center;
     gap: 8px;
     flex-wrap: wrap;
 }
@@ -1064,6 +1065,38 @@ button.type-badge {
         transform: translateY(0) scale(0.95);
     }
 
+.btn-combined-types {
+    width: 27px;
+    height: 27px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: rgba(139, 148, 158, 0.14);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-combined-types:hover {
+    color: var(--text-primary);
+    background: rgba(139, 148, 158, 0.25);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.btn-combined-types:active {
+    transform: translateY(0) scale(0.94);
+}
+
+.btn-combined-types:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* Type Modal Overlay */
 .type-modal {
     display: none;
@@ -1115,6 +1148,35 @@ button.type-badge {
     align-items: center;
     gap: 10px;
     padding-right: 30px;
+}
+
+.combined-type-shield {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(139, 148, 158, 0.14);
+    color: var(--text-secondary);
+}
+
+.combined-type-plus {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.combined-type-defense {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.combined-type-intro {
+    margin: -4px 0 2px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
 }
 
 /* Two Column Layout for Attacker/Defender */
