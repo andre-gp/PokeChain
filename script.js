@@ -29,7 +29,7 @@ const API_VERSION = 'https://pokeapi.co/api/v2/version/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v3.1',
+    version: 'v3.2',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -210,9 +210,17 @@ const stripPokemonList = (data) => data.results
 
 const stripMoveList = (data) => data.results.map(r => r.name);
 
+const stripSpeciesFlavorTextEntries = (entries) => (Array.isArray(entries) ? entries : [])
+    .filter(entry => entry?.language?.name === CURRENT_LANGUAGE)
+    .map(entry => ({
+        flavor_text: entry.flavor_text,
+        version: entry.version
+    }));
+
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
     evolves_from_species: data.evolves_from_species,
+    flavor_text_entries: stripSpeciesFlavorTextEntries(data.flavor_text_entries),
     generation: data.generation,
     id: data.id,
     name: data.name,
@@ -348,6 +356,7 @@ let pendingFormsData = null;
 
 const HISTORY_KEY = 'pokechain_history';
 const HISTORY_MAX = 8;
+const POKEDEX_VERSION_KEY = 'pokechain_pokedex_version';
 
 function getHistory() {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
@@ -405,6 +414,7 @@ settingAlwaysShowDetails.addEventListener('change', () => {
     document.body.classList.toggle('always-show-details', alwaysShowDetails);
     if (alwaysShowDetails) {
         document.querySelectorAll('.details-panel').forEach(p => {
+            if (p.closest('.result-card')?.querySelector('.pokedex-panel.visible')) return;
             p.classList.add('visible');
             loadDetailsPanel(p);
         });
@@ -920,7 +930,7 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
 
     const chainDepth = getChainDepth(evoChainData.chain);
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth, speciesData.generation);
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth, speciesData.generation, speciesData.flavor_text_entries);
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData, seq = undefined) {
@@ -1075,11 +1085,15 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainDepth = null, generation = null) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainDepth = null, generation = null, flavorTextEntries = []) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     const panelId    = `details-panel-${pName}-${pId}`;
     const panelBtnId = `details-btn-${pName}-${pId}`;
+    const pokedexPanelId = `pokedex-panel-${pName}-${pId}`;
+    const pokedexBtnId = `pokedex-btn-${pName}-${pId}`;
     const encodedDetails = encodeURIComponent(JSON.stringify({ stats, abilities }));
+    const hasPokedexEntries = flavorTextEntries.length > 0;
+    const encodedPokedexEntries = encodeURIComponent(JSON.stringify(flavorTextEntries));
     return `
                 <div class="result-card" id="result-card" data-variety="${pName}" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
                     <div class="pokemon-header">
@@ -1102,6 +1116,16 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                         <line x1="6" y1="20" x2="6" y2="14"/>
                                     </svg>
                                 </button>
+                                ${hasPokedexEntries ? `
+                                <button class="btn-stats-icon btn-pokedex-icon" id="${pokedexBtnId}"
+                                    onclick="togglePokedexPanel('${pokedexPanelId}', '${pokedexBtnId}')"
+                                    aria-expanded="false" aria-controls="${pokedexPanelId}"
+                                    title="Pokédex entries" aria-label="Show Pokédex entries">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2Z"/>
+                                        <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7Z"/>
+                                    </svg>
+                                </button>` : ''}
                                 ${chainDepth !== null ? `
                                 <button class="btn-stats-icon" onclick="revealChainLength(this, ${chainDepth})" title="Reveal number of evolution stages">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -1128,11 +1152,14 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                         </div>
                     </div>
                     <div class="divider"></div>
+                    <div class="details-panel" id="${panelId}"
+                        data-pkmn-details="${encodedDetails}"></div>
+                    ${hasPokedexEntries ? `
+                    <div class="pokedex-panel" id="${pokedexPanelId}" role="region"
+                        aria-label="Pokédex entries" data-pokedex-entries="${encodedPokedexEntries}"></div>` : ''}
                     <div class="evolution-section">
                         ${await renderEvolutions(evoInfo, pName, generation)}
                     </div>
-                    <div class="details-panel" id="${panelId}"
-                        data-pkmn-details="${encodedDetails}"></div>
                 </div>
             `;
 }
@@ -1486,7 +1513,172 @@ async function toggleDetailsPanel(panelId, btnId) {
 
     if (!isOpen) return;
 
+    const card = panel.closest('.result-card');
+    const pokedexPanel = card?.querySelector('.pokedex-panel.visible');
+    const pokedexBtn = card?.querySelector('.btn-pokedex-icon');
+    pokedexPanel?.classList.remove('visible');
+    pokedexBtn?.setAttribute('aria-expanded', 'false');
+    pokedexBtn?.classList.remove('active');
+
     await loadDetailsPanel(panel);
+    smoothScrollIntoView(panel);
+}
+
+function getVersionId(version) {
+    const match = version?.url?.match(/\/version\/(\d+)\//);
+    return match ? parseInt(match[1]) : null;
+}
+
+function getStoredPokedexVersion() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(POKEDEX_VERSION_KEY));
+        if (!stored || typeof stored.name !== 'string' || !Number.isInteger(stored.id)) return null;
+        return stored;
+    } catch {
+        return null;
+    }
+}
+
+function choosePokedexEntry(entries, preference = getStoredPokedexVersion()) {
+    if (!entries.length) return null;
+    if (!preference) {
+        return entries.reduce((newest, entry) => entry.versionId > newest.versionId ? entry : newest);
+    }
+
+    const exact = entries.find(entry => entry.version.name === preference.name);
+    if (exact) return exact;
+
+    return entries.reduce((closest, entry) => {
+        const distance = Math.abs(entry.versionId - preference.id);
+        const closestDistance = Math.abs(closest.versionId - preference.id);
+        if (distance < closestDistance) return entry;
+        if (distance === closestDistance && entry.versionId > closest.versionId) return entry;
+        return closest;
+    });
+}
+
+function normalizePokedexFlavorText(text) {
+    return String(text ?? '')
+        .replace(/\s*\u00ad\s*/g, '')
+        .replace(/[\r\n\f]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function formatVersionSlug(slug) {
+    return String(slug ?? '')
+        .split('-')
+        .map(part => part ? part[0].toUpperCase() + part.slice(1) : '')
+        .join(' ');
+}
+
+function createSelectControl(ariaLabel) {
+    const select = document.createElement('select');
+    select.className = 'select-control__input';
+    select.setAttribute('aria-label', ariaLabel);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'select-control';
+    wrapper.appendChild(select);
+
+    return { select, wrapper };
+}
+
+async function loadPokedexPanel(panel) {
+    if (panel.dataset.loaded) return;
+
+    panel.innerHTML = '<div class="pokedex-panel__loading"><div class="spinner"></div></div>';
+
+    try {
+        const rawEntries = JSON.parse(decodeURIComponent(panel.dataset.pokedexEntries));
+        const entries = rawEntries
+            .map(entry => ({ ...entry, versionId: getVersionId(entry.version) }))
+            .filter(entry => entry.versionId !== null)
+            .sort((a, b) => a.versionId - b.versionId);
+
+        if (!entries.length) throw new Error('No Pokédex entries available');
+
+        const labeledEntries = await Promise.all(entries.map(async entry => {
+            try {
+                const versionData = await cachedFetch(entry.version.url, stripToOnlyNames);
+                return { ...entry, gameLabel: getCurrentLanguageName(versionData) };
+            } catch {
+                return { ...entry, gameLabel: formatVersionSlug(entry.version.name) };
+            }
+        }));
+
+        const header = document.createElement('div');
+        header.className = 'pokedex-panel__header';
+
+        const title = document.createElement('div');
+        title.className = 'details-panel__section-title pokedex-panel__title';
+        title.textContent = 'Pokédex';
+
+        const { select, wrapper: selectControl } = createSelectControl('Pokédex game');
+
+        labeledEntries.forEach(entry => {
+            const option = document.createElement('option');
+            option.value = entry.version.name;
+            option.textContent = entry.gameLabel;
+            select.appendChild(option);
+        });
+
+        header.append(title, selectControl);
+
+        const flavorText = document.createElement('blockquote');
+        flavorText.className = 'pokedex-flavor-text';
+        flavorText.setAttribute('aria-live', 'polite');
+
+        const showEntry = entry => {
+            select.value = entry.version.name;
+            flavorText.textContent = normalizePokedexFlavorText(entry.flavor_text);
+        };
+
+        const initialEntry = choosePokedexEntry(labeledEntries);
+        showEntry(initialEntry);
+
+        select.addEventListener('change', () => {
+            const selected = labeledEntries.find(entry => entry.version.name === select.value);
+            if (!selected) return;
+            showEntry(selected);
+            localStorage.setItem(POKEDEX_VERSION_KEY, JSON.stringify({
+                name: selected.version.name,
+                id: selected.versionId
+            }));
+        });
+
+        panel.replaceChildren(header, flavorText);
+        panel.dataset.loaded = 'true';
+    } catch (error) {
+        if (DEBUG) console.error('Failed to load Pokédex entries:', error);
+        panel.innerHTML = '<p class="pokedex-panel__error">Failed to load Pokédex entries.</p>';
+    }
+}
+
+async function togglePokedexPanel(panelId, btnId) {
+    const panel = document.getElementById(panelId);
+    const btn = document.getElementById(btnId);
+    const isOpen = panel.classList.toggle('visible');
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    btn.classList.toggle('active', isOpen);
+
+    const card = panel.closest('.result-card');
+    const detailsPanel = card?.querySelector('.details-panel');
+    const detailsBtn = card?.querySelector('.btn-toggle-details');
+
+    if (!isOpen) {
+        if (alwaysShowDetails && detailsPanel) {
+            detailsPanel.classList.add('visible');
+            await loadDetailsPanel(detailsPanel);
+        }
+        return;
+    }
+
+    detailsPanel?.classList.remove('visible');
+    detailsBtn?.setAttribute('aria-expanded', 'false');
+    detailsBtn?.classList.remove('active');
+
+    await loadPokedexPanel(panel);
     smoothScrollIntoView(panel);
 }
 
