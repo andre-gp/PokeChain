@@ -1083,7 +1083,11 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
     return `
                 <div class="result-card" id="result-card" data-variety="${pName}" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
                     <div class="pokemon-header">
-                        <img class="pokemon-sprite" src="${pSprite}" alt="${pName}">
+                        <button class="pokemon-artwork-button" type="button" onclick="openPokemonImage(this)"
+                            data-pokemon-name="${pName}" data-type-color="${primaryTypeColor}"
+                            aria-label="View larger artwork of ${pName}" title="View larger artwork">
+                            <img class="pokemon-sprite" src="${pSprite}" alt="${pName}">
+                        </button>
                         <div class="pokemon-info">
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id-row">
@@ -1895,6 +1899,46 @@ function closeTypeModal() {
     document.getElementById('typeModal').style.display = 'none';
 }
 
+let pokemonLightboxTrigger = null;
+
+function openPokemonImage(trigger) {
+    const modal = document.getElementById('pokemonLightbox');
+    const modalImage = document.getElementById('pokemonLightboxImage');
+    const modalName = document.getElementById('pokemonLightboxName');
+    const sourceImage = trigger.querySelector('.pokemon-sprite');
+    if (!modal || !modalImage || !modalName || !sourceImage?.src) return;
+
+    pokemonLightboxTrigger = trigger;
+    modalImage.src = sourceImage.src;
+    modalImage.alt = sourceImage.alt;
+    modalName.textContent = trigger.dataset.pokemonName || sourceImage.alt;
+    modal.style.setProperty('--pokemon-type-color', trigger.dataset.typeColor || 'var(--accent)');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('pokemon-lightbox-open');
+    modal.classList.add('visible');
+
+    window.setTimeout(() => {
+        if (modal.classList.contains('visible')) {
+            modal.querySelector('.pokemon-lightbox-close')?.focus({ preventScroll: true });
+        }
+    }, 260);
+}
+
+function closePokemonImage() {
+    const modal = document.getElementById('pokemonLightbox');
+    if (!modal || !modal.classList.contains('visible')) return;
+
+    modal.classList.remove('visible');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('pokemon-lightbox-open');
+    pokemonLightboxTrigger?.focus({ preventScroll: true });
+    pokemonLightboxTrigger = null;
+}
+
+function handlePokemonLightboxBackdrop(event) {
+    if (!event.target.closest('.pokemon-lightbox-content')) closePokemonImage();
+}
+
 // Close modal when clicking outside of the content box
 window.addEventListener('click', function (event) {
     const modal = document.getElementById('typeModal');
@@ -1908,6 +1952,10 @@ window.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
         if (document.body.classList.contains('tutorial')) {
             dismissTutorial(); return;
+        }
+        const pokemonLightbox = document.getElementById('pokemonLightbox');
+        if (pokemonLightbox?.classList.contains('visible')) {
+            closePokemonImage(); return;
         }
         const moveInfoModal = document.getElementById('moveInfoModal');
         if (moveInfoModal && moveInfoModal.style.display === 'block') {

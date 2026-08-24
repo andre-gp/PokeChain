@@ -85,6 +85,26 @@
     <!-- First-visit tutorial overlay -->
     <div id="tutorialOverlay" class="tutorial-overlay"></div>
 
+    <!-- Pokemon Artwork Lightbox -->
+    <div id="pokemonLightbox" class="pokemon-lightbox" role="dialog" aria-modal="true"
+        aria-labelledby="pokemonLightboxName" aria-hidden="true" onclick="handlePokemonLightboxBackdrop(event)">
+        <div class="pokemon-lightbox-glow" aria-hidden="true"></div>
+        <div class="pokemon-lightbox-content">
+            <button class="pokemon-lightbox-close" type="button" onclick="closePokemonImage()"
+                aria-label="Close enlarged Pokémon artwork">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+            </button>
+            <img id="pokemonLightboxImage" class="pokemon-lightbox-image" src="" alt="">
+            <div class="pokemon-lightbox-caption">                
+                <span id="pokemonLightboxName" class="pokemon-lightbox-name"></span>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settingsModal" class="type-modal" onclick="closeSettings()">
         <div class="type-modal-content settings-modal-content" onclick="event.stopPropagation()">

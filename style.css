@@ -390,8 +390,33 @@ header {
     width: 120px;
     height: 120px;
     image-rendering: pixelated;
-    flex-shrink: 0;
     filter: drop-shadow(0 4px 20px rgba(0,0,0,0.4));
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.3s ease;
+}
+
+.pokemon-artwork-button {
+    width: 120px;
+    height: 120px;
+    padding: 0;
+    border: 0;
+    border-radius: 24px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: zoom-in;
+    flex-shrink: 0;
+    position: relative;
+    font: inherit;
+}
+
+.pokemon-artwork-button:hover .pokemon-sprite,
+.pokemon-artwork-button:focus-visible .pokemon-sprite {
+    transform: translateY(-3px) scale(1.06);
+    filter: drop-shadow(0 10px 24px rgba(0,0,0,0.5));
+}
+
+.pokemon-artwork-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 5px;
 }
 
 .pokemon-info {
@@ -953,6 +978,11 @@ footer {
         height: 100px;
     }
 
+    .pokemon-artwork-button {
+        width: 100px;
+        height: 100px;
+    }
+
     .result-card {
         padding: 20px;
     }
@@ -1095,6 +1125,157 @@ button.type-badge {
 .btn-combined-types:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+}
+
+/* Pokemon Artwork Lightbox */
+.pokemon-lightbox-open {
+    overflow: hidden;
+}
+
+.pokemon-lightbox {
+    --pokemon-type-color: var(--accent);
+    position: fixed;
+    z-index: 1200;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: clamp(20px, 5vw, 56px);
+    overflow: hidden;
+    background: rgba(5, 8, 13, 0.62);
+    backdrop-filter: blur(18px) saturate(0.75);
+    -webkit-backdrop-filter: blur(18px) saturate(0.75);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.pokemon-lightbox.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.pokemon-lightbox::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--pokemon-type-color) 24%, transparent) 0%, transparent 38%),
+        radial-gradient(circle at 50% 50%, transparent 20%, rgba(5,8,13,0.5) 80%);
+    pointer-events: none;
+}
+
+.pokemon-lightbox-glow {
+    position: absolute;
+    width: min(68vw, 560px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--pokemon-type-color);
+    filter: blur(110px);
+    opacity: 0.16;
+    transform: scale(0.75);
+    transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pokemon-lightbox.visible .pokemon-lightbox-glow {
+    transform: scale(1);
+}
+
+.pokemon-lightbox-content {
+    width: min(86vw, 580px);
+    min-height: min(82vh, 660px);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    isolation: isolate;
+    transform: translateY(18px) scale(0.94);
+    transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pokemon-lightbox.visible .pokemon-lightbox-content {
+    transform: translateY(0) scale(1);
+}
+
+.pokemon-lightbox-close {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 50%;
+    background: rgba(22,27,34,0.58);
+    color: var(--text-secondary);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.pokemon-lightbox-close:hover,
+.pokemon-lightbox-close:focus-visible {
+    color: var(--text-primary);
+    background: rgba(33,38,45,0.88);
+    border-color: color-mix(in srgb, var(--pokemon-type-color) 55%, rgba(255,255,255,0.16));
+    transform: rotate(4deg) scale(1.06);
+    outline: none;
+}
+
+.pokemon-lightbox-image {
+    width: min(72vw, 510px);
+    height: min(72vw, 510px);
+    max-height: 66vh;
+    object-fit: contain;
+    image-rendering: auto;
+    filter: drop-shadow(0 28px 34px rgba(0,0,0,0.38));
+    opacity: 0;
+    transform: translateY(16px) scale(0.86);
+    transition: opacity 0.3s ease 0.05s, transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.pokemon-lightbox.visible .pokemon-lightbox-image {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.pokemon-lightbox-caption {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    margin-top: -10px;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.55);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s ease 0.16s, transform 0.35s ease 0.16s;
+}
+
+.pokemon-lightbox.visible .pokemon-lightbox-caption {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.pokemon-lightbox-eyebrow {
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.pokemon-lightbox-name {
+    font-size: clamp(1.45rem, 4vw, 2rem);
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    text-transform: capitalize;
 }
 
 /* Type Modal Overlay */
@@ -1271,6 +1452,26 @@ button.type-relation-badge:active {
 
 /* Responsive for Modal */
 @media (max-width: 520px) {
+    .pokemon-lightbox {
+        padding: 18px;
+    }
+
+    .pokemon-lightbox-content {
+        width: 100%;
+        min-height: 76vh;
+    }
+
+    .pokemon-lightbox-close {
+        top: 4px;
+        right: 2px;
+    }
+
+    .pokemon-lightbox-image {
+        width: min(92vw, 430px);
+        height: min(92vw, 430px);
+        max-height: 61vh;
+    }
+
     .type-modal-body-wrapper {
         grid-template-columns: 1fr; /* Stacks to 1 column on mobile */
         gap: 20px;
