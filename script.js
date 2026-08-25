@@ -475,6 +475,10 @@ function dismissTutorial() {
     localStorage.setItem(TUTORIAL_KEY, 'true');
 }
 
+document.addEventListener('click', () => {
+    if (document.body.classList.contains('tutorial')) dismissTutorial();
+});
+
 function openSettings() {
     dismissTutorial();
     document.getElementById('settingsModal').style.display = 'block';
