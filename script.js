@@ -340,6 +340,96 @@ function stripMove(data) {
     };
 }
 
+function escapeMoveEffectHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatMoveEffectInline(value) {
+    return String(value)
+        .split(/(`[^`\n]+`)/g)
+        .map(part => part.startsWith('`') && part.endsWith('`')
+            ? `<code>${escapeMoveEffectHtml(part.slice(1, -1))}</code>`
+            : escapeMoveEffectHtml(part))
+        .join('');
+}
+
+function splitMoveEffectTableRow(line) {
+    let row = line.trim();
+    if (row.startsWith('|')) row = row.slice(1);
+    if (row.endsWith('|')) row = row.slice(0, -1);
+    return row.split('|').map(cell => cell.trim());
+}
+
+function getMoveEffectTableAlignments(line) {
+    const cells = splitMoveEffectTableRow(line);
+    if (cells.length < 2 || cells.some(cell => !/^:?-{3,}:?$/.test(cell))) return null;
+
+    return cells.map(cell => {
+        if (cell.startsWith(':') && cell.endsWith(':')) return 'center';
+        if (cell.endsWith(':')) return 'right';
+        return 'left';
+    });
+}
+
+function formatMoveEffect(effect) {
+    const lines = String(effect).replace(/\r\n?/g, '\n').split('\n');
+    const blocks = [];
+
+    for (let i = 0; i < lines.length;) {
+        if (!lines[i].trim()) {
+            i++;
+            continue;
+        }
+
+        const alignments = i + 1 < lines.length
+            ? getMoveEffectTableAlignments(lines[i + 1])
+            : null;
+
+        if (lines[i].includes('|') && alignments) {
+            const headers = splitMoveEffectTableRow(lines[i]);
+            const rows = [];
+            i += 2;
+
+            while (i < lines.length && lines[i].trim() && lines[i].includes('|')) {
+                rows.push(splitMoveEffectTableRow(lines[i]));
+                i++;
+            }
+
+            const renderCell = (cell, column, tag) => {
+                const alignment = alignments[column] || 'left';
+                return `<${tag} class="move-effect-cell--${alignment}">${formatMoveEffectInline(cell ?? '')}</${tag}>`;
+            };
+
+            blocks.push(`
+                <div class="move-effect-table-wrap">
+                    <table class="move-effect-table">
+                        <thead><tr>${headers.map((cell, column) => renderCell(cell, column, 'th')).join('')}</tr></thead>
+                        <tbody>${rows.map(row => `<tr>${headers.map((_, column) => renderCell(row[column], column, 'td')).join('')}</tr>`).join('')}</tbody>
+                    </table>
+                </div>`);
+            continue;
+        }
+
+        const paragraph = [];
+        while (i < lines.length && lines[i].trim()) {
+            const nextLineIsTableDivider = i + 1 < lines.length
+                && lines[i].includes('|')
+                && getMoveEffectTableAlignments(lines[i + 1]);
+            if (nextLineIsTableDivider) break;
+            paragraph.push(lines[i].trim());
+            i++;
+        }
+        blocks.push(`<p>${formatMoveEffectInline(paragraph.join(' '))}</p>`);
+    }
+
+    return blocks.join('');
+}
+
 let allPokemonNames = [];
 let allMoveNames = [];
 let searchTimeout = null;
@@ -2195,6 +2285,7 @@ async function renderMoveResults(moveData, targetEl = null, seq = undefined) {
     const effect = moveData.effect_chance !== null
         ? rawEffect.replace(/\$effect_chance/g, moveData.effect_chance)
         : rawEffect;
+    const effectHtml = formatMoveEffect(effect);
 
     const flavorText = moveData.flavor_text_entries?.[0]?.flavor_text ?? '';
 
@@ -2297,7 +2388,7 @@ async function renderMoveResults(moveData, targetEl = null, seq = undefined) {
             ` : ''}
             <div class="move-section">
                 <h4>Effect</h4>
-                <p class="move-effect">${effect}</p>
+                <div class="move-effect">${effectHtml}</div>
             </div>
             ${detailsSectionHtml}
         </div>

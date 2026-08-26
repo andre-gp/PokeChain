@@ -1688,6 +1688,74 @@ button.type-relation-badge:active {
     margin: 0;
 }
 
+.move-effect > :first-child {
+    margin-top: 0;
+}
+
+.move-effect > :last-child {
+    margin-bottom: 0;
+}
+
+.move-effect p {
+    margin: 0 0 12px;
+}
+
+.move-effect code {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 0.9em;
+}
+
+.move-effect-table-wrap {
+    overflow-x: auto;
+    margin: 12px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.move-effect-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.move-effect-table th,
+.move-effect-table td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.move-effect-table th {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+    font-weight: 600;
+}
+
+.move-effect-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.move-effect-table tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+}
+
+.move-effect-cell--left {
+    text-align: left;
+}
+
+.move-effect-cell--center {
+    text-align: center;
+}
+
+.move-effect-cell--right {
+    text-align: right;
+}
+
 .move-flavor {
     font-style: italic;
     border-left-color: var(--warning);
