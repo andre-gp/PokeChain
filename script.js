@@ -658,6 +658,7 @@ loadMoveList();
 searchInput.addEventListener('input', (e) => {
     const val = e.target.value.trim().toLowerCase();
     clearTimeout(searchTimeout);
+    activeSuggestionIndex = -1;
 
     if (val.length === 0) {
         showHistorySuggestions();
@@ -699,7 +700,7 @@ searchInput.addEventListener('keydown', (e) => {
             if (activeSuggestionIndex >= 0 && items[activeSuggestionIndex]) {
                 navigateTo(items[activeSuggestionIndex].dataset.name);
             } else {
-                navigateTo(val);
+                navigateTo(resolveClosestMatch(val) || val);
             }
             activeSuggestionIndex = -1;
         }
@@ -739,27 +740,13 @@ function fuzzyDistance(query, name) {
     return Math.min(full, prefix);
 }
 
-// If a failed query matches exactly one known Pokémon or move (substring or
-// fuzzy, same rules as the suggestions), return that name so the search can
-// redirect instead of erroring — works even with autocomplete turned off.
-function resolveSingleMatch(query) {
-    const threshold = Math.max(1, Math.floor(query.length / 2.5));
-    let match = null;
-    const names = [...allPokemonNames.map(p => p.name), ...allMoveNames];
-    for (const name of names) {
-        if (name.includes(query) || fuzzyDistance(query, name) <= threshold) {
-            if (match !== null && match !== name) return null;
-            match = name;
-        }
-    }
-    return match;
-}
-
-function showSuggestions(query) {
+function getSuggestionMatches(query) {
     const LIMIT = 5;
     const threshold = Math.max(1, Math.floor(query.length / 2.5));
 
-    const exactPokemon = allPokemonNames.filter(p => p.name.includes(query));
+    const exactPokemon = allPokemonNames
+        .filter(p => p.name.includes(query))
+        .sort((a, b) => fuzzyDistance(query, a.name) - fuzzyDistance(query, b.name));
     let pokemonMatches = exactPokemon.slice(0, LIMIT);
     if (pokemonMatches.length < LIMIT) {
         const exactNames = new Set(exactPokemon.map(p => p.name));
@@ -773,7 +760,9 @@ function showSuggestions(query) {
     }
 
     const moveLimit = 8 - pokemonMatches.length;
-    const exactMoves = allMoveNames.filter(m => m.includes(query));
+    const exactMoves = allMoveNames
+        .filter(m => m.includes(query))
+        .sort((a, b) => fuzzyDistance(query, a) - fuzzyDistance(query, b));
     let moveMatches = exactMoves.slice(0, moveLimit);
     if (moveMatches.length < moveLimit) {
         const exactMoveSet = new Set(exactMoves);
@@ -785,6 +774,19 @@ function showSuggestions(query) {
             .map(x => x.m);
         moveMatches = [...moveMatches, ...fuzzyMoves].slice(0, moveLimit);
     }
+
+    return { pokemonMatches, moveMatches };
+}
+
+// Return the first entry autocomplete would display.
+function resolveClosestMatch(query) {
+    if (query.length < 2) return null;
+    const { pokemonMatches, moveMatches } = getSuggestionMatches(query);
+    return pokemonMatches[0]?.name ?? moveMatches[0] ?? null;
+}
+
+function showSuggestions(query) {
+    const { pokemonMatches, moveMatches } = getSuggestionMatches(query);
 
     if (pokemonMatches.length === 0 && moveMatches.length === 0) {
         suggestionsDiv.classList.remove('visible');
@@ -990,7 +992,7 @@ async function search(query) {
         console.error(err);
         const errors = err instanceof AggregateError ? err.errors : [err];
         if (errors.every(e => e?.status === 404)) {
-            const match = resolveSingleMatch(cleanQuery);
+            const match = resolveClosestMatch(cleanQuery);
             if (match) {
                 console.log(`[Fuzzy redirect] "${cleanQuery}" → "${match}"`);
                 navigateTo(match);
