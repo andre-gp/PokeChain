@@ -741,75 +741,56 @@ function fuzzyDistance(query, name) {
 }
 
 function getSuggestionMatches(query) {
-    const LIMIT = 5;
+    query = normalizeSearchQuery(query);
+    if (query.length < 2) return [];
+    const LIMIT = 8;
     const threshold = Math.max(1, Math.floor(query.length / 2.5));
 
-    const exactPokemon = allPokemonNames
-        .filter(p => p.name.includes(query))
-        .sort((a, b) => fuzzyDistance(query, a.name) - fuzzyDistance(query, b.name));
-    let pokemonMatches = exactPokemon.slice(0, LIMIT);
-    if (pokemonMatches.length < LIMIT) {
-        const exactNames = new Set(exactPokemon.map(p => p.name));
-        const fuzzy = allPokemonNames
-            .filter(p => !exactNames.has(p.name))
-            .map(p => ({ p, d: fuzzyDistance(query, p.name) }))
-            .filter(x => x.d <= threshold)
-            .sort((a, b) => a.d - b.d)
-            .map(x => x.p);
-        pokemonMatches = [...pokemonMatches, ...fuzzy].slice(0, LIMIT);
-    }
-
-    const moveLimit = 8 - pokemonMatches.length;
-    const exactMoves = allMoveNames
-        .filter(m => m.includes(query))
-        .sort((a, b) => fuzzyDistance(query, a) - fuzzyDistance(query, b));
-    let moveMatches = exactMoves.slice(0, moveLimit);
-    if (moveMatches.length < moveLimit) {
-        const exactMoveSet = new Set(exactMoves);
-        const fuzzyMoves = allMoveNames
-            .filter(m => !exactMoveSet.has(m))
-            .map(m => ({ m, d: fuzzyDistance(query, m) }))
-            .filter(x => x.d <= threshold)
-            .sort((a, b) => a.d - b.d)
-            .map(x => x.m);
-        moveMatches = [...moveMatches, ...fuzzyMoves].slice(0, moveLimit);
-    }
-
-    return { pokemonMatches, moveMatches };
+    // Rank both kinds together before limiting, so category cannot hide a better match.
+    return [
+        ...allPokemonNames.map(p => ({ ...p, type: 'pokemon' })),
+        ...allMoveNames.map(name => ({ name, type: 'move' }))
+    ]
+        .map(match => ({
+            ...match,
+            rank: match.name === query ? 0 : match.name.includes(query) ? 1 : 2,
+            distance: fuzzyDistance(query, match.name)
+        }))
+        .filter(match => match.rank < 2 || match.distance <= threshold)
+        .map(match => ({ ...match, fullDistance: levenshtein(query, match.name) }))
+        .sort((a, b) => a.rank - b.rank
+            || a.distance - b.distance
+            || a.fullDistance - b.fullDistance
+            || a.name.localeCompare(b.name))
+        .slice(0, LIMIT);
 }
 
 // Return the first entry autocomplete would display.
 function resolveClosestMatch(query) {
-    if (query.length < 2) return null;
-    const { pokemonMatches, moveMatches } = getSuggestionMatches(query);
-    return pokemonMatches[0]?.name ?? moveMatches[0] ?? null;
+    return getSuggestionMatches(query)[0]?.name ?? null;
 }
 
 function showSuggestions(query) {
-    const { pokemonMatches, moveMatches } = getSuggestionMatches(query);
+    const matches = getSuggestionMatches(query);
 
-    if (pokemonMatches.length === 0 && moveMatches.length === 0) {
+    if (matches.length === 0) {
         suggestionsDiv.classList.remove('visible');
         return;
     }
 
-    const pokemonHTML = pokemonMatches.map(p => `
-        <div class="suggestion-item" data-name="${p.name}">
-            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" alt="" loading="lazy">
-            <span class="suggestion-name">${p.name}</span>
-            <span class="suggestion-id">#${String(p.id).padStart(3, '0')}</span>
+    suggestionsDiv.innerHTML = matches.map(match => match.type === 'pokemon' ? `
+        <div class="suggestion-item" data-name="${match.name}">
+            <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${match.id}.png" alt="" loading="lazy">
+            <span class="suggestion-name">${match.name}</span>
+            <span class="suggestion-id">#${String(match.id).padStart(3, '0')}</span>
         </div>
-    `).join('');
-
-    const moveHTML = moveMatches.map(m => `
-        <div class="suggestion-item suggestion-item--move" data-name="${m}">
+    ` : `
+        <div class="suggestion-item suggestion-item--move" data-name="${match.name}">
             <span class="suggestion-move-icon">⚡</span>
-            <span class="suggestion-name">${m.replace(/-/g, ' ')}</span>
+            <span class="suggestion-name">${match.name.replace(/-/g, ' ')}</span>
             <span class="suggestion-badge">Move</span>
         </div>
     `).join('');
-
-    suggestionsDiv.innerHTML = pokemonHTML + moveHTML;
 
     suggestionsDiv.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -902,12 +883,16 @@ document.addEventListener('click', (e) => {
     }
 });
 
-async function search(query) {
-    const cleanQuery = query
+function normalizeSearchQuery(query) {
+    return query
         .trim()
         .toLowerCase()
         .replace(/\s+/g, '-')      // Replace spaces with dashes
         .replace(/[^a-z0-9-]/g, ''); // Remove everything except letters, numbers, and dashes
+}
+
+async function search(query) {
+    const cleanQuery = normalizeSearchQuery(query);
     if (!cleanQuery) return;
 
     // Stale-response guard: only the latest search may touch the DOM,
