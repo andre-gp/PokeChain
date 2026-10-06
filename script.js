@@ -1010,8 +1010,8 @@ async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) 
     const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
     const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
 
-    const chainDepth = getChainDepth(evoChainData.chain);
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainDepth, speciesData.generation, speciesData.flavor_text_entries);
+    const chainStages = getChainStages(evoChainData.chain);
+    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, speciesData.flavor_text_entries);
 }
 
 async function renderResults(speciesData, pokemonData, evoChainData, seq = undefined) {
@@ -1166,7 +1166,7 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainDepth = null, generation = null, flavorTextEntries = []) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainStages = null, generation = null, flavorTextEntries = []) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     const panelId    = `details-panel-${pName}-${pId}`;
     const panelBtnId = `details-btn-${pName}-${pId}`;
@@ -1175,6 +1175,7 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
     const encodedDetails = encodeURIComponent(JSON.stringify({ stats, abilities }));
     const hasPokedexEntries = flavorTextEntries.length > 0;
     const encodedPokedexEntries = encodeURIComponent(JSON.stringify(flavorTextEntries));
+    const encodedChainStages = chainStages ? encodeURIComponent(JSON.stringify(chainStages)) : '';
     return `
                 <div class="result-card" id="result-card" data-variety="${pName}" style="border-left: 3px solid ${primaryTypeColor};${isVisible ? '' : ' display:none;'}">
                     <div class="pokemon-header">
@@ -1207,8 +1208,8 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                         <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7Z"/>
                                     </svg>
                                 </button>` : ''}
-                                ${chainDepth !== null ? `
-                                <button class="btn-stats-icon" onclick="revealChainLength(this, ${chainDepth})" title="Reveal number of evolution stages">
+                                ${chainStages ? `
+                                <button class="btn-stats-icon" onclick="revealChainLength(this)" data-chain-stages="${encodedChainStages}" title="Reveal number of evolution stages">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                                         <circle cx="3" cy="12" r="2.5"/>
                                         <circle cx="12" cy="12" r="2.5"/>
@@ -1254,9 +1255,12 @@ function getGenerationId(generation) {
     return match ? parseInt(match[1]) : null;
 }
 
-function getChainDepth(chainNode) {
-    if (!chainNode || !chainNode.evolves_to || chainNode.evolves_to.length === 0) return 1;
-    return 1 + Math.max(...chainNode.evolves_to.map(getChainDepth));
+// Species names grouped by chain depth: [[stage 1 species], [stage 2 species], ...]
+function getChainStages(chainNode, depth = 0, stages = []) {
+    if (!chainNode) return stages;
+    (stages[depth] ??= []).push(chainNode.species.name);
+    for (const next of chainNode.evolves_to ?? []) getChainStages(next, depth + 1, stages);
+    return stages;
 }
 
 async function findMyEvos(chainNode, speciesData, pokemonData) {
@@ -1989,11 +1993,36 @@ function getCurrentLanguageName(data) {
         || (data.name);
 }
 
-function revealChainLength(btn, depth) {
+async function revealChainLength(btn) {
+    const stages = JSON.parse(decodeURIComponent(btn.dataset.chainStages));
+    const depth = stages.length;
     const span = document.createElement('span');
     span.className = 'chain-length-badge';
     span.textContent = `${depth} stage${depth !== 1 ? 's' : ''}`;
     btn.replaceWith(span);
+
+    const stageGens = await Promise.all(stages.map(async names => {
+        const species = await Promise.all(names.map(n => cachedFetch(API_SPECIES + n, stripSpecies)));
+        const byId = new Map();
+        for (const s of species) {
+            const id = getGenerationId(s.generation);
+            if (id !== null) byId.set(id, formatGenLabel(s.generation));
+        }
+        return [...byId.entries()].sort((a, b) => a[0] - b[0]);
+    }));
+    const distinctGens = new Set(stageGens.flat().map(([id]) => id));
+    if (distinctGens.size < 2) return;
+
+    span.classList.add('chain-length-badge--gens');
+    span.tabIndex = 0;
+    span.dataset.tooltip = stageGens
+        .map((gens, i) => `${ordinal(i + 1)} - Gen ${gens.map(([, label]) => label).join(' / ')}`)
+        .join('\n');
+}
+
+function ordinal(n) {
+    const suffix = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+    return n + suffix;
 }
 
 function toggleSpoiler(idx) {
@@ -2455,7 +2484,7 @@ const abilityTooltip = (() => {
     return { show, hide };
 })();
 
-const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help';
+const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badge--gens';
 (() => {
     let shownBadge = null;
     let lastPointerType = 'mouse';

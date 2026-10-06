@@ -479,6 +479,12 @@ body.always-show-details .btn-toggle-details { display: none; }
     font-weight: 500;
 }
 
+.chain-length-badge--gens {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: help;
+}
+
 .type-badges {
     display: flex;
     align-items: center;
