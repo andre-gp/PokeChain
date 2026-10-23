@@ -663,6 +663,18 @@ body.always-show-details .btn-toggle-details { display: none; }
             transform: scale(0.98);
         }
 
+/* Chance-based evolutions: condition_expression rendered as readable infix */
+.evo-variable {
+    border-bottom: 1px dashed currentColor;
+    cursor: help;
+}
+
+    .evo-variable:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+
 /* Game-dependent evolutions: alternate per-game methods under a collapsible section */
 .evo-card .evo-other-games {
     margin-top: 12px;

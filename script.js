@@ -15,7 +15,7 @@ const DAMAGE_CLASS_ICONS = {
 const DEBUG = false;
 const CURRENT_LANGUAGE = 'en';
 
-const HIDDEN_FORM_SUFFIXES = ['-mega', '-gmax', '-starter'];
+const HIDDEN_FORM_SUFFIXES = ['-mega', '-gmax'];
 
 const API_POKEMON = 'https://pokeapi.co/api/v2/pokemon/'
 const API_SPECIES = 'https://pokeapi.co/api/v2/pokemon-species/';
@@ -310,6 +310,14 @@ function stripToOnlyNames(data) {
         names: data.names
     }
 }
+
+const stripEvolutionVariable = (data) => ({
+    id: data.id,
+    name: data.name,
+    symbol: data.symbol,
+    names: data.names,
+    descriptions: stripArrayToCurrentLanguageEntry(data.descriptions)
+});
 
 const stripVersionGroup = (data) => ({
     name: data.name,
@@ -2019,6 +2027,9 @@ async function getMethodDetails(details) {
                     lines.push('<strong>Player must have an empty slot in their party and an extra Poké Ball on hand.</strong>');
                 }
                 break;
+            case 'condition_expression':
+                lines.push(...await getConditionExpressionLines(value));
+                break;
             case 'turn_upside_down':
                 lines.push(`<strong>Turn device upside down</strong>`);
                 break;
@@ -2041,6 +2052,88 @@ async function getMethodDetails(details) {
     }
 
     return lines.length === 0 ? 'No additional details available.' : lines.join('<br>');
+}
+
+const EXPRESSION_OPERATORS = {
+    '||': { label: 'or', precedence: 1 },
+    '&&': { label: 'and', precedence: 2 },
+    '|': { label: '|', precedence: 3 },
+    '^': { label: '^', precedence: 4 },
+    '&': { label: '&', precedence: 5 },
+    '==': { label: '==', precedence: 6 },
+    '!=': { label: '≠', precedence: 6 },
+    '<': { label: '<', precedence: 7 },
+    '<=': { label: '≤', precedence: 7 },
+    '>': { label: '>', precedence: 7 },
+    '>=': { label: '≥', precedence: 7 },
+    '<<': { label: '<<', precedence: 8 },
+    '>>': { label: '>>', precedence: 8 },
+    '+': { label: '+', precedence: 9 },
+    '-': { label: '−', precedence: 9 },
+    '*': { label: '×', precedence: 10 },
+    '/': { label: '÷', precedence: 10 },
+    '%': { label: '%', precedence: 10 },
+    '!': { label: 'not', precedence: 11, arity: 1 },
+};
+
+function formatConditionExpression(expression, variablesBySymbol) {
+    const stack = [];
+
+    for (const token of expression.trim().split(/\s+/)) {
+        const op = EXPRESSION_OPERATORS[token]
+            ?? (/^[^\w\s.]+$/.test(token) ? { label: token, precedence: 0 } : null);
+
+        if (!op) {
+            const variable = variablesBySymbol.get(token);
+            let html = escapeMoveEffectHtml(variable ? getCurrentLanguageName(variable) : token);
+            const description = variable?.descriptions?.[0]?.description;
+            if (description) {
+                html = `<span class="evo-variable" tabindex="0" data-tooltip="${escapeMoveEffectHtml(description)}">${html}</span>`;
+            }
+            stack.push({ html, precedence: Infinity });
+            continue;
+        }
+
+        const arity = op.arity ?? 2;
+        if (stack.length < arity) return null;
+        const operands = stack.splice(-arity);
+        const label = escapeMoveEffectHtml(op.label);
+
+        if (arity === 1) {
+            const [operand] = operands;
+            const inner = operand.precedence < op.precedence ? `(${operand.html})` : operand.html;
+            stack.push({ html: `${label} ${inner}`, precedence: op.precedence });
+            continue;
+        }
+
+        const [left, right] = operands;
+        const leftHtml = left.precedence < op.precedence ? `(${left.html})` : left.html;
+        const rightHtml = right.precedence <= op.precedence ? `(${right.html})` : right.html;
+        stack.push({ html: `${leftHtml} ${label} ${rightHtml}`, precedence: op.precedence });
+    }
+
+    return stack.length === 1 ? stack[0].html : null;
+}
+
+async function getConditionExpressionLines(condition) {
+    const lines = [];
+
+    if (condition.percentage_chance !== null && condition.percentage_chance !== undefined) {
+        lines.push(`<strong>Chance:</strong> ${condition.percentage_chance}%`);
+    }
+
+    if (condition.expression) {
+        // A variable that fails to load just falls back to its raw symbol.
+        const variables = await Promise.all(
+            (condition.variables ?? []).map(v => cachedFetch(v.url, stripEvolutionVariable).catch(() => null))
+        );
+        const variablesBySymbol = new Map(variables.filter(Boolean).map(v => [v.symbol, v]));
+        const formatted = formatConditionExpression(condition.expression, variablesBySymbol)
+            ?? escapeMoveEffectHtml(condition.expression);
+        lines.push(`<strong>Condition:</strong> <span class="evo-expression">${formatted}</span>`);
+    }
+
+    return lines;
 }
 
 function getCurrentLanguageName(data) {
@@ -2540,7 +2633,7 @@ const abilityTooltip = (() => {
     return { show, hide };
 })();
 
-const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badge--gens';
+const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badge--gens, .evo-variable';
 (() => {
     let shownBadge = null;
     let lastPointerType = 'mouse';
