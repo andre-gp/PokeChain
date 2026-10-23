@@ -1945,6 +1945,10 @@ async function getMethodDetails(details) {
             case 'base_form':
                 // lines.push(`<strong>Base Form:</strong> ${value}`);
                 break;
+            case 'allowed_natures':
+                const natureNames = await Promise.all(value.map(nature => cachedFetchNameInCurrentLanguage(nature.url)));
+                lines.push(`<strong>Nature:</strong> ${natureNames.join(', ')}`);
+                break;
             case 'gender':
                 const gender = await cachedFetch(API_GENDER + value);
                 lines.push(`<strong>Gender:</strong> ${gender.name} only`);
