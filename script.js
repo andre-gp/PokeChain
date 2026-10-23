@@ -29,7 +29,7 @@ const API_VERSION = 'https://pokeapi.co/api/v2/version/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v3.2',
+    version: 'v3.3',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -252,8 +252,22 @@ const stripForm = (data) => ({
     name: data.name,
     names: data.names,
     pokemon: data.pokemon,
+    sprite: data.sprites.other?.['official-artwork']?.front_default || data.sprites.front_default,
     types: data.types
 })
+
+function stripEvolutionChain(data) {
+    (function normalize(node) {
+        for (const d of node.evolution_details) {
+            d.base_form = d.required_pokemon_form ?? d.base_form ?? null;
+            d.evolved_form = d.evolved_pokemon_form ?? d.evolved_form ?? null;
+            delete d.required_pokemon_form;
+            delete d.evolved_pokemon_form;
+        }
+        node.evolves_to.forEach(normalize);
+    })(data.chain);
+    return data;
+}
 
 function stripEvolutionTrigger(data) {
     return {
@@ -811,10 +825,13 @@ function historyItemHTML(name) {
     // are not (their ids are >10000), so fall back to their cached /pokemon data for the id.
     const id = allPokemonNames.find(p => p.name === name)?.id
         ?? PokeCache.get(API_POKEMON + name)?.id;
-    if (id != null) {
+    const sprite = id != null
+        ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`
+        : PokeCache.get(API_FORMS + name)?.sprite;
+    if (sprite) {
         return `
             <div class="suggestion-item suggestion-item--history" data-name="${name}">
-                <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png" alt="" loading="lazy">
+                <img src="${sprite}" alt="" loading="lazy">
                 <span class="suggestion-name">${name}</span>
                 ${clockBadge}
                 ${removeBtn}
@@ -915,21 +932,26 @@ async function search(query) {
         const pokemonUrl = `https://pokeapi.co/api/v2/pokemon/${cleanQuery}`;
         const speciesUrl = `https://pokeapi.co/api/v2/pokemon-species/${cleanQuery}`;
         const moveUrl = `https://pokeapi.co/api/v2/move/${cleanQuery}`;
+        const formUrl = API_FORMS + cleanQuery;
 
         const taggedPromises = [
             cachedFetch(pokemonUrl, stripPokemon).then(value => ({ type: "pokemon", value })),
             cachedFetch(speciesUrl, stripSpecies).then(value => ({ type: "species", value })),
-            cachedFetch(moveUrl, stripMove).then(value => ({ type: "move", value }))
+            cachedFetch(moveUrl, stripMove).then(value => ({ type: "move", value })),
+            cachedFetch(formUrl, stripForm).then(value => ({ type: "form", value }))
         ];
 
         const result = await Promise.any(taggedPromises);
 
-        if (result.type === "pokemon") {
-            const pokemonData = result.value;
+        if (result.type === "pokemon" || result.type === "form") {
+            const formName = result.type === "form" ? result.value.name : null;
+            const pokemonData = result.type === "form"
+                ? await cachedFetch(API_POKEMON + result.value.pokemon.name, stripPokemon)
+                : result.value;
             const speciesData = await cachedFetch(API_SPECIES + pokemonData.species.name, stripSpecies);
-            const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
+            const evoChainData = await cachedFetch(speciesData.evolution_chain.url, stripEvolutionChain);
             if (seq !== searchSeq) return;
-            await renderResults(speciesData, pokemonData, evoChainData, seq);
+            await renderResults(speciesData, pokemonData, evoChainData, seq, formName);
             if (seq !== searchSeq) return;
             addToHistory(cleanQuery);
             return;
@@ -950,7 +972,7 @@ async function search(query) {
                     // we need to render directly (e.g: eevee (pokémon) === eevee (species))
                     // because the hash won't change
                     const pokemonData = await cachedFetch(API_POKEMON + targetName, stripPokemon);
-                    const evoChainData = await cachedFetch(speciesData.evolution_chain.url);
+                    const evoChainData = await cachedFetch(speciesData.evolution_chain.url, stripEvolutionChain);
                     if (seq !== searchSeq) return;
                     await renderResults(speciesData, pokemonData, evoChainData, seq);
                     if (seq !== searchSeq) return;
@@ -997,24 +1019,51 @@ function showError(msg) {
     errorMsg.classList.add('visible');
 }
 
-async function renderVarietyCard(variety, speciesData, evoChainData, isVisible) {
-    if (HIDDEN_FORM_SUFFIXES.some(suffix => variety.pokemon.name.includes(suffix))) return '';
-    const pkmnData = await cachedFetch(API_POKEMON + variety.pokemon.name, stripPokemon);
-    const mainFormPromise = cachedFetch(API_FORMS + pkmnData.forms[0].name, stripForm);
-    const pTypesPromise = Promise.all(
-        pkmnData.types.map(async slot => ({
-            name: await cachedFetchNameInCurrentLanguage(slot.type.url),
-            slug: slot.type.name
-        }))
-    );
-    const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData);
-    const [mainForm, pTypes, myEvos] = await Promise.all([mainFormPromise, pTypesPromise, myEvosPromise]);
-
-    const chainStages = getChainStages(evoChainData.chain);
-    return renderMainCard(pkmnData.name, pkmnData.id, pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, speciesData.flavor_text_entries);
+function findChainNode(chainNode, speciesName) {
+    if (chainNode.species.name === speciesName) return chainNode;
+    for (const next of chainNode.evolves_to) {
+        const found = findChainNode(next, speciesName);
+        if (found) return found;
+    }
+    return null;
 }
 
-async function renderResults(speciesData, pokemonData, evoChainData, seq = undefined) {
+// A Pokémon gets one card per form when the chain evolves from or into one of its cosmetic forms.
+function getEvolutionSplitForms(pkmnData, speciesData, evoChainData) {
+    const node = findChainNode(evoChainData.chain, speciesData.name);
+    const evolvedIntoForms = (node?.evolution_details ?? []).map(d => d.evolved_form?.name);
+    const requiredForms = (node?.evolves_to ?? []).flatMap(next => next.evolution_details.map(d => d.base_form?.name));
+    const chainForms = new Set([...evolvedIntoForms, ...requiredForms]);
+    const formNames = pkmnData.forms.map(f => f.name);
+    const splits = formNames.some(name => name !== pkmnData.name && chainForms.has(name));
+    return splits ? formNames : [];
+}
+
+async function renderVarietyCards(variety, speciesData, evoChainData, isVisible, requestedForm = null) {
+    if (HIDDEN_FORM_SUFFIXES.some(suffix => variety.pokemon.name.includes(suffix))) return [];
+    const pkmnData = await cachedFetch(API_POKEMON + variety.pokemon.name, stripPokemon);
+    const splitForms = getEvolutionSplitForms(pkmnData, speciesData, evoChainData);
+    const showsRequestedForm = requestedForm !== pkmnData.name && pkmnData.forms.some(f => f.name === requestedForm);
+    const cardForms = splitForms.length > 0 ? splitForms : [showsRequestedForm ? requestedForm : null];
+    const chainStages = getChainStages(evoChainData.chain);
+
+    return Promise.all(cardForms.map(async formName => {
+        const form = formName ? await cachedFetch(API_FORMS + formName, stripForm) : null;
+        const typeSlots = form?.types?.length ? form.types : pkmnData.types;
+        const pTypesPromise = Promise.all(
+            typeSlots.map(async slot => ({
+                name: await cachedFetchNameInCurrentLanguage(slot.type.url),
+                slug: slot.type.name
+            }))
+        );
+        const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData, splitForms.length > 0 ? formName : null);
+        const [pTypes, myEvos] = await Promise.all([pTypesPromise, myEvosPromise]);
+
+        return renderMainCard(formName ?? pkmnData.name, pkmnData.id, form?.sprite ?? pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, speciesData.flavor_text_entries);
+    }));
+}
+
+async function renderResults(speciesData, pokemonData, evoChainData, seq = undefined, formName = null) {
     const pName = getCurrentLanguageName(speciesData);
     const pId = pokemonData.id;
     const pSprite = pokemonData.sprite;
@@ -1037,7 +1086,7 @@ async function renderResults(speciesData, pokemonData, evoChainData, seq = undef
             }
         });
 
-        const myEvos = await findMyEvos(evoChainData.chain, speciesData, pokemonData, true);
+        const myEvos = await findMyEvos(evoChainData.chain, speciesData, pokemonData);
 
         // If single evolution branch, append clickable "?" preview
         if (myEvos.length === 1) {
@@ -1049,10 +1098,11 @@ async function renderResults(speciesData, pokemonData, evoChainData, seq = undef
     }
 
     const defaultVariety = speciesData.varieties.find(v => v.is_default) ?? speciesData.varieties[0];
-    html += await renderVarietyCard(defaultVariety, speciesData, evoChainData, true);
+    const [defaultCard = '', ...otherDefaultCards] = await renderVarietyCards(defaultVariety, speciesData, evoChainData, true, formName);
+    html += defaultCard;
 
     const otherVarieties = speciesData.varieties.filter(v => !v.is_default);
-    const hasRevealableVarieties = otherVarieties.some(
+    const hasRevealableVarieties = otherDefaultCards.length > 0 || otherVarieties.some(
         v => !HIDDEN_FORM_SUFFIXES.some(suffix => v.pokemon.name.includes(suffix))
     );
 
@@ -1060,11 +1110,11 @@ async function renderResults(speciesData, pokemonData, evoChainData, seq = undef
     if (hasRevealableVarieties) {
         if (alwaysShowForms) {
             const formResults = (await Promise.all(
-                otherVarieties.map(v => renderVarietyCard(v, speciesData, evoChainData, true))
-            )).filter(r => r !== '');
-            html += `<div id="otherFormsContainer">${formResults.join('')}</div>`;
+                otherVarieties.map(v => renderVarietyCards(v, speciesData, evoChainData, true, formName))
+            )).flat();
+            html += `<div id="otherFormsContainer">${[...otherDefaultCards, ...formResults].join('')}</div>`;
         } else {
-            newPendingFormsData = { varieties: otherVarieties, speciesData, evoChainData };
+            newPendingFormsData = { varieties: otherVarieties, speciesData, evoChainData, formName, renderedCards: otherDefaultCards };
             html += `
                 <div class="reveal-forms-wrapper" id="revealFormsWrapper">
                     <button class="btn-reveal-forms" onclick="showAlternativeForms()">
@@ -1087,22 +1137,21 @@ async function renderResults(speciesData, pokemonData, evoChainData, seq = undef
         });
     }
     maybeShowTutorial();
-    await revealAndScrollToForm(speciesData, pokemonData);
+    const targetCardName = formName ?? (pokemonData.name !== defaultVariety.pokemon.name ? pokemonData.name : null);
+    if (targetCardName) await revealAndScrollToForm(targetCardName);
     if (DEBUG) console.log(`[TOTAL] Search → render: ${(performance.now() - searchStartTime).toFixed(1)} ms`);
 }
 
-// When the searched/linked Pokémon is a non-default form, reveal the hidden forms and scroll
-// to its card so deep-linking (e.g. #lycanroc-midnight from an evolution branch) lands on it.
-async function revealAndScrollToForm(speciesData, pokemonData) {
-    const variety = speciesData.varieties.find(v => v.pokemon.name === pokemonData.name);
-    if (!variety || variety.is_default) return; // default variety is already shown on top
-
-    let card = document.querySelector(`[data-variety="${pokemonData.name}"]`);
+async function revealAndScrollToForm(cardName) {
+    let card = document.querySelector(`[data-variety="${cardName}"]`);
     if (!card && pendingFormsData) {
         await showAlternativeForms();
-        card = document.querySelector(`[data-variety="${pokemonData.name}"]`);
+        card = document.querySelector(`[data-variety="${cardName}"]`);
     }
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const isTopCard = card === document.querySelector('.result-card');
+    if (card && !isTopCard) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 async function showAlternativeForms() {
@@ -1111,15 +1160,15 @@ async function showAlternativeForms() {
     if (!wrapper) { pendingFormsData = null; return; }
     const btn = wrapper.querySelector('.btn-reveal-forms');
     btn.disabled = true;
-    const { varieties, speciesData, evoChainData } = pendingFormsData;
+    const { varieties, speciesData, evoChainData, formName, renderedCards } = pendingFormsData;
     pendingFormsData = null;
 
     const results = (await Promise.all(
-        varieties.map(v => renderVarietyCard(v, speciesData, evoChainData, true))
-    )).filter(r => r !== '');
+        varieties.map(v => renderVarietyCards(v, speciesData, evoChainData, true, formName))
+    )).flat();
 
     const container = document.getElementById('otherFormsContainer');
-    container.innerHTML = results.join('');
+    container.innerHTML = [...renderedCards, ...results].join('');
     if (alwaysShowDetails) {
         container.querySelectorAll('.details-panel').forEach(p => {
             p.classList.add('visible');
@@ -1263,7 +1312,9 @@ function getChainStages(chainNode, depth = 0, stages = []) {
     return stages;
 }
 
-async function findMyEvos(chainNode, speciesData, pokemonData) {
+async function findMyEvos(chainNode, speciesData, pokemonData, formName = null) {
+    const matchingForms = formName ? [formName] : [pokemonData.name, ...pokemonData.forms.map(f => f.name)];
+
     function traverse(currentChain, isBaseForm) {
         if (currentChain.species.name === speciesData.name) {
             const copyChain = structuredClone(currentChain);
@@ -1271,7 +1322,7 @@ async function findMyEvos(chainNode, speciesData, pokemonData) {
                 evolvesTo.evolution_details = evolvesTo.evolution_details.filter((detail) => {
                     const base_form = detail.base_form;
                     return ((base_form === null || base_form === undefined) && isBaseForm)
-                        || (base_form?.name === pokemonData.name);
+                        || matchingForms.includes(base_form?.name);
                 });
 
                 return evolvesTo.evolution_details.length > 0;
@@ -1301,11 +1352,16 @@ async function renderEvolutions(evoInfo, pName, currentGeneration = null) {
     }
 
     // Split each evolves_to species node into one render target per evolved_form.
+    // Cosmetic forms are merged into one target unless they are the only outcome (e.g. Alcremie).
     const renderTargets = [];
     for (const node of evoInfo) {
+        const evolvedSpecies = await cachedFetch(API_SPECIES + node.species.name, stripSpecies);
+        const hasSingleEvolvedForm = new Set(node.evolution_details.map(d => d.evolved_form?.name)).size === 1;
         const byForm = new Map();
         for (const d of node.evolution_details) {
-            const key = d.evolved_form?.name ?? null;
+            let key = d.evolved_form?.name ?? null;
+            const isCosmeticForm = key && !evolvedSpecies.varieties.some(v => v.pokemon.name === key);
+            if (isCosmeticForm && !hasSingleEvolvedForm) key = null;
             if (!byForm.has(key)) byForm.set(key, []);
             byForm.get(key).push(d);
         }
