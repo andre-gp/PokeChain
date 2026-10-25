@@ -1267,7 +1267,11 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                             <div class="pokemon-name">${pName}</div>
                             <div class="pokemon-id-row">
                                 <span class="pokemon-id">#${String(pId).padStart(3, '0')}</span>
-                                ${generation ? `<span class="pokemon-gen">· Gen ${formatGenLabel(generation)} ·</span>` : ''}
+                                ${generation ? (chainStages ? `
+                                <button class="pokemon-gen pokemon-gen--stages" type="button" onclick="loadChainStageGens(this)"
+                                    data-chain-stages="${encodedChainStages}"
+                                    data-tooltip="${chainStages.length} stage${chainStages.length !== 1 ? 's' : ''}">· Gen ${formatGenLabel(generation)} ·</button>`
+                                    : `<span class="pokemon-gen">· Gen ${formatGenLabel(generation)} ·</span>`) : ''}
                                 <button class="btn-stats-icon btn-toggle-details" id="${panelBtnId}"
                                     onclick="toggleDetailsPanel('${panelId}', '${panelBtnId}')"
                                     aria-expanded="false" title="Base Stats &amp; Abilities">
@@ -1294,16 +1298,6 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                     title="Moves" aria-label="Show moves">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                         <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>
-                                    </svg>
-                                </button>` : ''}
-                                ${chainStages ? `
-                                <button class="btn-stats-icon" onclick="revealChainLength(this)" data-chain-stages="${encodedChainStages}" title="Reveal number of evolution stages">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                        <circle cx="3" cy="12" r="2.5"/>
-                                        <circle cx="12" cy="12" r="2.5"/>
-                                        <circle cx="21" cy="12" r="2.5"/>
-                                        <rect x="6" y="11" width="4" height="2" rx="1"/>
-                                        <rect x="15" y="11" width="4" height="2" rx="1"/>
                                     </svg>
                                 </button>` : ''}
                             </div>
@@ -2462,13 +2456,12 @@ function getCurrentLanguageName(data) {
         || (data.name);
 }
 
-async function revealChainLength(btn) {
+// The Gen label's tooltip starts as "N stages"; on first click, append each stage's
+// generation when the chain spans more than one.
+async function loadChainStageGens(btn) {
+    if (btn.dataset.gensLoaded) return;
+    btn.dataset.gensLoaded = 'true';
     const stages = JSON.parse(decodeURIComponent(btn.dataset.chainStages));
-    const depth = stages.length;
-    const span = document.createElement('span');
-    span.className = 'chain-length-badge';
-    span.textContent = `${depth} stage${depth !== 1 ? 's' : ''}`;
-    btn.replaceWith(span);
 
     const stageGens = await Promise.all(stages.map(async names => {
         const species = await Promise.all(names.map(n => cachedFetch(API_SPECIES + n, stripSpecies)));
@@ -2482,11 +2475,10 @@ async function revealChainLength(btn) {
     const distinctGens = new Set(stageGens.flat().map(([id]) => id));
     if (distinctGens.size < 2) return;
 
-    span.classList.add('chain-length-badge--gens');
-    span.tabIndex = 0;
-    span.dataset.tooltip = stageGens
+    btn.dataset.tooltip += '\n' + stageGens
         .map((gens, i) => `${ordinal(i + 1)} - Gen ${gens.map(([, label]) => label).join(' / ')}`)
         .join('\n');
+    tooltipTargets.refresh(btn);
 }
 
 function ordinal(n) {
@@ -2971,24 +2963,27 @@ const abilityTooltip = (() => {
     return { show, hide };
 })();
 
-const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badge--gens, .evo-variable, .moves-col--name[data-tooltip]';
-(() => {
+const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .pokemon-gen--stages, .evo-variable, .moves-col--name[data-tooltip]';
+// Seek-to-see tooltips: only a click (or Enter) opens them, never hover or focus.
+const CLICK_ONLY_TOOLTIP_TARGETS = '.pokemon-gen--stages';
+const tooltipTargets = (() => {
     let shownBadge = null;
     let lastPointerType = 'mouse';
 
     function show(badge) { abilityTooltip.show(badge); shownBadge = badge; }
     function hide() { abilityTooltip.hide(); shownBadge = null; }
     function badgeFrom(e) { return e.target.closest?.(TOOLTIP_TARGETS); }
+    function isClickOnly(badge) { return badge.matches(CLICK_ONLY_TOOLTIP_TARGETS); }
 
     document.addEventListener('pointerover', (e) => {
         if (e.pointerType !== 'mouse') return;
         const badge = badgeFrom(e);
-        if (badge && badge !== shownBadge) show(badge);
+        if (badge && badge !== shownBadge && !isClickOnly(badge)) show(badge);
     });
     document.addEventListener('pointerout', (e) => {
         if (e.pointerType !== 'mouse') return;
         const badge = badgeFrom(e);
-        if (badge && !badge.contains(e.relatedTarget)) hide();
+        if (badge && !badge.contains(e.relatedTarget) && !isClickOnly(badge)) hide();
     });
     document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; }, true);
     document.addEventListener('click', (e) => {
@@ -2996,7 +2991,7 @@ const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badg
         const opensMoveModal = badge?.classList.contains('moves-col--name');
         if (opensMoveModal) { hide(); return; }
         if (badge?.classList.contains('setting-help')) e.preventDefault();
-        if (badge && lastPointerType !== 'mouse') {
+        if (badge && (lastPointerType !== 'mouse' || isClickOnly(badge))) {
             shownBadge === badge ? hide() : show(badge);
         } else if (!badge && shownBadge) {
             hide();
@@ -3004,11 +2999,14 @@ const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badg
     }, true);
     document.addEventListener('focusin', (e) => {
         const badge = badgeFrom(e);
-        if (badge && badge.matches(':focus-visible')) show(badge);
+        if (badge && badge.matches(':focus-visible') && !isClickOnly(badge)) show(badge);
     });
     document.addEventListener('focusout', (e) => {
         if (badgeFrom(e)) hide();
     });
+
+    // Re-render the tooltip if its target's text changed while it was open.
+    return { refresh(badge) { if (shownBadge === badge) show(badge); } };
 })();
 
 if (DEBUG) {

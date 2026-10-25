@@ -447,6 +447,20 @@ header {
     font-size: 0.9rem;
 }
 
+.pokemon-gen--stages {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color 0.2s;
+}
+
+.pokemon-gen--stages:hover {
+    color: var(--accent);
+}
+
 .pokemon-hw {
     font-size: 0.8rem;
     color: var(--text-secondary);
@@ -471,18 +485,6 @@ body.always-show-details .btn-toggle-details { display: none; }
 .btn-stats-icon:hover,
 .btn-stats-icon.active {
     color: var(--accent);
-}
-
-.chain-length-badge {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.chain-length-badge--gens {
-    text-decoration: underline dotted;
-    text-underline-offset: 3px;
-    cursor: help;
 }
 
 .type-badges {
