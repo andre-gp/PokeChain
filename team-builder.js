@@ -199,22 +199,6 @@ function toggleTbEditMode() {
     renderTeamBuilderTabs();
 }
 
-async function showMoveInfo(moveName) {
-    const modal = document.getElementById('moveInfoModal');
-    const body = document.getElementById('moveInfoBody');
-    modal.style.display = 'block';
-    body.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
-    try {
-        const moveData = await cachedFetch('https://pokeapi.co/api/v2/move/' + moveName, stripMove);
-        await renderMoveResults(moveData, body);
-    } catch {
-        body.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;">Failed to load move.</p>';
-    }
-}
-function closeMoveInfoModal() {
-    document.getElementById('moveInfoModal').style.display = 'none';
-}
-
 function createNewTeam() {
     const teams = loadTeams();
     const newTeam = createTeamRecord('Team ' + (teams.length + 1));

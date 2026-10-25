@@ -25,11 +25,13 @@ const API_ABILITY = 'https://pokeapi.co/api/v2/ability/';
 const API_NATURE = 'https://pokeapi.co/api/v2/nature/';
 const API_VERSION_GROUP = 'https://pokeapi.co/api/v2/version-group/';
 const API_VERSION = 'https://pokeapi.co/api/v2/version/';
+const API_MOVE = 'https://pokeapi.co/api/v2/move/';
+const API_MOVE_LEARN_METHOD = 'https://pokeapi.co/api/v2/move-learn-method/';
 
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v3.4',
+    version: 'v3.5',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -240,6 +242,10 @@ const stripPokemon = (data) => ({
     height: data.height,
     weight: data.weight,
     moves: data.moves.map(m => m.move.name),
+    // [index into moves, versionGroupId, learnMethodId, level]
+    learnset: data.moves.flatMap((m, moveIndex) => m.version_group_details.map(d => [
+        moveIndex, versionGroupId(d.version_group), learnMethodId(d.move_learn_method), d.level_learned_at
+    ])),
 });
 
 const stripForm = (data) => ({
@@ -322,7 +328,15 @@ const stripEvolutionVariable = (data) => ({
 
 const stripVersionGroup = (data) => ({
     name: data.name,
+    order: data.order,
     versions: data.versions
+});
+
+const stripMoveLearnMethod = (data) => ({
+    id: data.id,
+    name: data.name,
+    names: stripArrayToCurrentLanguageEntry(data.names),
+    descriptions: stripArrayToCurrentLanguageEntry(data.descriptions)
 });
 
 const stripAbility = (data) => ({
@@ -469,7 +483,7 @@ let pendingFormsData = null;
 
 const HISTORY_KEY = 'pokechain_history';
 const HISTORY_MAX = 8;
-const POKEDEX_VERSION_KEY = 'pokechain_pokedex_version';
+const PREFERRED_VERSION_KEY = 'pokechain_pokedex_version';
 
 function getHistory() {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
@@ -1072,7 +1086,8 @@ async function renderVarietyCards(variety, speciesData, evoChainData, isVisible,
         const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData, splitForms.length > 0 ? formName : null);
         const [pTypes, myEvos] = await Promise.all([pTypesPromise, myEvosPromise]);
 
-        return renderMainCard(formName ?? pkmnData.name, pkmnData.id, form?.sprite ?? pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, flavorTextEntries);
+        const learnsetPokemon = pkmnData.learnset.length > 0 ? pkmnData.name : null;
+        return renderMainCard(formName ?? pkmnData.name, pkmnData.id, form?.sprite ?? pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, flavorTextEntries, learnsetPokemon);
     }));
 }
 
@@ -1228,12 +1243,14 @@ async function renderBreadcrumbs(speciesData) {
     return html;
 }
 
-async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainStages = null, generation = null, flavorTextEntries = []) {
+async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, stats = [], abilities = [], height = null, weight = null, chainStages = null, generation = null, flavorTextEntries = [], learnsetPokemon = null) {
     const primaryTypeColor = pTypes.length > 0 ? (TYPE_COLORS[pTypes[0].slug] || '#888') : '#888';
     const panelId    = `details-panel-${pName}-${pId}`;
     const panelBtnId = `details-btn-${pName}-${pId}`;
     const pokedexPanelId = `pokedex-panel-${pName}-${pId}`;
     const pokedexBtnId = `pokedex-btn-${pName}-${pId}`;
+    const movesPanelId = `moves-panel-${pName}-${pId}`;
+    const movesBtnId = `moves-btn-${pName}-${pId}`;
     const encodedDetails = encodeURIComponent(JSON.stringify({ stats, abilities }));
     const hasPokedexEntries = flavorTextEntries.length > 0;
     const encodedPokedexEntries = encodeURIComponent(JSON.stringify(flavorTextEntries));
@@ -1270,6 +1287,15 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                                         <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7Z"/>
                                     </svg>
                                 </button>` : ''}
+                                ${learnsetPokemon ? `
+                                <button class="btn-stats-icon btn-moves-icon" id="${movesBtnId}"
+                                    onclick="toggleMovesPanel('${movesPanelId}', '${movesBtnId}')"
+                                    aria-expanded="false" aria-controls="${movesPanelId}"
+                                    title="Moves" aria-label="Show moves">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>
+                                    </svg>
+                                </button>` : ''}
                                 ${chainStages ? `
                                 <button class="btn-stats-icon" onclick="revealChainLength(this)" data-chain-stages="${encodedChainStages}" title="Reveal number of evolution stages">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -1300,6 +1326,9 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                     ${hasPokedexEntries ? `
                     <div class="pokedex-panel" id="${pokedexPanelId}" role="region"
                         aria-label="Pokédex entries" data-pokedex-entries="${encodedPokedexEntries}"></div>` : ''}
+                    ${learnsetPokemon ? `
+                    <div class="moves-panel" id="${movesPanelId}" role="region"
+                        aria-label="Moves" data-pokemon="${learnsetPokemon}"></div>` : ''}
                     <div class="divider"></div>
                     <div class="evolution-section">
                         ${await renderEvolutions(evoInfo, pName, generation)}
@@ -1479,6 +1508,11 @@ async function renderEvolutions(evoInfo, pName, currentGeneration = null) {
 function versionGroupId(versionGroup) {
     if (typeof versionGroup === 'number') return versionGroup;
     const match = versionGroup?.url?.match(/\/version-group\/(\d+)\//);
+    return match ? parseInt(match[1]) : null;
+}
+
+function learnMethodId(learnMethod) {
+    const match = learnMethod?.url?.match(/\/move-learn-method\/(\d+)\//);
     return match ? parseInt(match[1]) : null;
 }
 
@@ -1668,14 +1702,18 @@ async function toggleDetailsPanel(panelId, btnId) {
     if (!isOpen) return;
 
     const card = panel.closest('.result-card');
-    const pokedexPanel = card?.querySelector('.pokedex-panel.visible');
-    const pokedexBtn = card?.querySelector('.btn-pokedex-icon');
-    pokedexPanel?.classList.remove('visible');
-    pokedexBtn?.setAttribute('aria-expanded', 'false');
-    pokedexBtn?.classList.remove('active');
+    closeCardPanel(card, '.pokedex-panel', '.btn-pokedex-icon');
+    closeCardPanel(card, '.moves-panel', '.btn-moves-icon');
 
     await loadDetailsPanel(panel);
     smoothScrollIntoView(panel);
+}
+
+function closeCardPanel(card, panelSelector, btnSelector) {
+    card?.querySelector(panelSelector)?.classList.remove('visible');
+    const btn = card?.querySelector(btnSelector);
+    btn?.setAttribute('aria-expanded', 'false');
+    btn?.classList.remove('active');
 }
 
 function getVersionId(version) {
@@ -1683,9 +1721,9 @@ function getVersionId(version) {
     return match ? parseInt(match[1]) : null;
 }
 
-function getStoredPokedexVersion() {
+function getPreferredVersion() {
     try {
-        const stored = JSON.parse(localStorage.getItem(POKEDEX_VERSION_KEY));
+        const stored = JSON.parse(localStorage.getItem(PREFERRED_VERSION_KEY));
         if (!stored || typeof stored.name !== 'string' || !Number.isInteger(stored.id)) return null;
         return stored;
     } catch {
@@ -1693,7 +1731,11 @@ function getStoredPokedexVersion() {
     }
 }
 
-function choosePokedexEntry(entries, preference = getStoredPokedexVersion()) {
+function storePreferredVersion(name, id) {
+    localStorage.setItem(PREFERRED_VERSION_KEY, JSON.stringify({ name, id }));
+}
+
+function choosePokedexEntry(entries, preference = getPreferredVersion()) {
     if (!entries.length) return null;
     if (!preference) {
         return entries.reduce((newest, entry) => entry.versionId > newest.versionId ? entry : newest);
@@ -1795,10 +1837,7 @@ async function loadPokedexPanel(panel) {
             const selected = labeledEntries.find(entry => entry.version.name === select.value);
             if (!selected) return;
             showEntry(selected);
-            localStorage.setItem(POKEDEX_VERSION_KEY, JSON.stringify({
-                name: selected.version.name,
-                id: selected.versionId
-            }));
+            storePreferredVersion(selected.version.name, selected.versionId);
         });
 
         panel.replaceChildren(header, flavorText);
@@ -1809,7 +1848,7 @@ async function loadPokedexPanel(panel) {
     }
 }
 
-async function togglePokedexPanel(panelId, btnId) {
+async function toggleCardPanel(panelId, btnId, loadPanel, otherPanelSelector, otherBtnSelector) {
     const panel = document.getElementById(panelId);
     const btn = document.getElementById(btnId);
     const isOpen = panel.classList.toggle('visible');
@@ -1818,7 +1857,6 @@ async function togglePokedexPanel(panelId, btnId) {
 
     const card = panel.closest('.result-card');
     const detailsPanel = card?.querySelector('.details-panel');
-    const detailsBtn = card?.querySelector('.btn-toggle-details');
 
     if (!isOpen) {
         if (alwaysShowDetails && detailsPanel) {
@@ -1828,12 +1866,285 @@ async function togglePokedexPanel(panelId, btnId) {
         return;
     }
 
-    detailsPanel?.classList.remove('visible');
-    detailsBtn?.setAttribute('aria-expanded', 'false');
-    detailsBtn?.classList.remove('active');
+    closeCardPanel(card, '.details-panel', '.btn-toggle-details');
+    closeCardPanel(card, otherPanelSelector, otherBtnSelector);
 
-    await loadPokedexPanel(panel);
+    await loadPanel(panel);
     smoothScrollIntoView(panel);
+}
+
+async function togglePokedexPanel(panelId, btnId) {
+    await toggleCardPanel(panelId, btnId, loadPokedexPanel, '.moves-panel', '.btn-moves-icon');
+}
+
+async function toggleMovesPanel(panelId, btnId) {
+    await toggleCardPanel(panelId, btnId, loadMovesPanel, '.pokedex-panel', '.btn-pokedex-icon');
+}
+
+function chooseMovesGame(games, preference = getPreferredVersion()) {
+    if (!preference) return games.findLast(game => game.hasLevelUpMoves) ?? games[games.length - 1];
+
+    const exact = games.find(game => game.versions.some(v => v.name === preference.name));
+    if (exact) return exact;
+
+    const distance = game => Math.min(...game.versions.map(v => Math.abs(v.id - preference.id)));
+    return games.reduce((closest, game) => distance(game) <= distance(closest) ? game : closest);
+}
+
+async function resolveLearnableMove(moveName) {
+    const moveData = await cachedFetch(API_MOVE + moveName, stripMove);
+    const [typeName, damageClassName] = await Promise.all([
+        cachedFetchNameInCurrentLanguage(moveData.type.url),
+        cachedFetchNameInCurrentLanguage(moveData.damage_class.url)
+    ]);
+    return {
+        slug: moveData.name,
+        name: getCurrentLanguageName(moveData),
+        type: { slug: moveData.type.name, name: typeName },
+        damageClass: { slug: moveData.damage_class.name, name: damageClassName },
+        power: moveData.power,
+        accuracy: moveData.accuracy,
+        description: normalizePokedexFlavorText(moveData.flavor_text_entries?.[0]?.flavor_text)
+            || moveData.effect_entries?.[0]?.short_effect?.replace(/\$effect_chance/g, moveData.effect_chance)
+            || ''
+    };
+}
+
+const MOVE_SORT_ARROW = `<svg class="moves-sort__arrow" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 9 12 16 19 9"/></svg>`;
+
+const MOVE_COLUMNS = {
+    level:    { label: 'Lv',   sortValue: row => row.level },
+    name:     { label: 'Move', sortValue: row => row.move.name },
+    type:     { label: 'Type', sortValue: row => row.move.type.name },
+    category: { label: 'Cat',  sortValue: row => row.move.damageClass.name },
+    power:    { label: 'Pow',  sortValue: row => row.move.power, descFirst: true },
+    accuracy: { label: 'Acc',  sortValue: row => row.move.accuracy, descFirst: true },
+    how:      { label: 'How' }
+};
+
+function compareMoveRows(a, b, sortValue, dir) {
+    const x = sortValue(a), y = sortValue(b);
+    // Missing values always sort last
+    if (x == null || y == null) return (x == null) - (y == null);
+    return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir;
+}
+
+async function loadMovesPanel(panel) {
+    if (panel.dataset.loaded) return;
+
+    panel.innerHTML = '<div class="pokedex-panel__loading"><div class="spinner"></div></div>';
+
+    try {
+        const { moves, learnset } = await cachedFetch(API_POKEMON + panel.dataset.pokemon, stripPokemon);
+        const versionGroupIds = [...new Set(learnset.map(([, vgId]) => vgId))];
+        const games = (await Promise.all(versionGroupIds.map(async id => {
+            const versionGroup = await cachedFetch(API_VERSION_GROUP + id, stripVersionGroup);
+            return {
+                id,
+                order: versionGroup.order,
+                versions: versionGroup.versions.map(v => ({ name: v.name, id: getVersionId(v) })),
+                // Only level-up entries have a level
+                hasLevelUpMoves: learnset.some(([, vgId, , level]) => vgId === id && level > 0),
+                label: await getVersionGroupLabel(id)
+            };
+        }))).sort((a, b) => a.order - b.order);
+
+        if (!games.length) throw new Error('No learnable moves');
+
+        const header = document.createElement('div');
+        header.className = 'pokedex-panel__header';
+
+        const title = document.createElement('div');
+        title.className = 'details-panel__section-title pokedex-panel__title';
+        title.textContent = 'Moves';
+
+        const { select, wrapper: selectControl } = createSelectControl('Moves game');
+        games.forEach(game => {
+            const option = document.createElement('option');
+            option.value = game.id;
+            option.textContent = game.label;
+            select.appendChild(option);
+        });
+
+        header.append(title, selectControl);
+
+        const methodChips = document.createElement('div');
+        methodChips.className = 'moves-methods';
+
+        const list = document.createElement('div');
+        list.className = 'moves-list';
+
+        panel.replaceChildren(header, methodChips, list);
+
+        const resolvedMoves = new Map();
+        const getMove = moveIndex => {
+            if (!resolvedMoves.has(moveIndex)) {
+                resolvedMoves.set(moveIndex, resolveLearnableMove(moves[moveIndex]).catch(error => {
+                    resolvedMoves.delete(moveIndex);
+                    throw error;
+                }));
+            }
+            return resolvedMoves.get(moveIndex);
+        };
+
+        const state = { rows: [], methods: [], method: null, sort: null, dir: 1 };
+        let showToken = 0;
+
+        const methodDescription = methodId => (state.methods.find(m => m.id === methodId)
+            ?.descriptions?.[0]?.description ?? '').replace(/"/g, '&quot;');
+
+        const howLabel = row => {
+            const method = state.methods.find(m => m.id === row.methodId);
+            if (method.name !== 'level-up') return getCurrentLanguageName(method);
+            return row.level === 0 ? 'Evo' : `Lv ${row.level}`;
+        };
+
+        const renderList = () => {
+            const method = state.methods.find(m => m.id === state.method);
+            const isAll = !method;
+            const isLevelUp = method?.name === 'level-up';
+
+            let rows;
+            if (isAll) {
+                const byMove = new Map();
+                state.rows.forEach(row => {
+                    if (!byMove.has(row.move.slug)) byMove.set(row.move.slug, { move: row.move, how: [] });
+                    byMove.get(row.move.slug).how.push(row);
+                });
+                rows = [...byMove.values()];
+                rows.forEach(row => row.how.sort((a, b) => a.methodId - b.methodId || a.level - b.level));
+            } else {
+                rows = state.rows.filter(row => row.methodId === state.method);
+            }
+
+            rows.sort((a, b) => isLevelUp ? a.level - b.level || a.move.name.localeCompare(b.move.name)
+                                          : a.move.name.localeCompare(b.move.name));
+            if (state.sort) rows.sort((a, b) => compareMoveRows(a, b, MOVE_COLUMNS[state.sort].sortValue, state.dir));
+
+            const columns = [
+                ...(isLevelUp ? ['level'] : []),
+                'name', 'type', 'category', 'power', 'accuracy',
+                ...(isAll ? ['how'] : [])
+            ];
+            const rowClass = `moves-row${isLevelUp ? ' moves-row--level' : ''}${isAll ? ' moves-row--all' : ''}`;
+
+            const headerCell = key => {
+                const column = MOVE_COLUMNS[key];
+                if (!column.sortValue) return `<span class="moves-col moves-col--${key}">${column.label}</span>`;
+                const sortClass = state.sort === key ? ` moves-sort--${state.dir > 0 ? 'asc' : 'desc'}` : '';
+                return `<button class="moves-col moves-col--${key} moves-sort${sortClass}" data-sort="${key}">${column.label}${MOVE_SORT_ARROW}</button>`;
+            };
+
+            const cell = (key, row) => {
+                const { move } = row;
+                switch (key) {
+                    case 'level':
+                        return `<span class="moves-col moves-col--level">${row.level === 0 ? '<span class="moves-evo" title="Learned on evolution">Evo</span>' : row.level}</span>`;
+                    case 'name':
+                        return `<button class="moves-col moves-col--name" onclick="showMoveInfo('${move.slug}')"${move.description ? ` data-tooltip="${move.description.replace(/"/g, '&quot;')}"` : ''}>${move.name}</button>`;
+                    case 'type':
+                        return `<span class="moves-col moves-col--type"><button class="moves-type" style="background:${TYPE_COLORS[move.type.slug] || '#888'}" onclick="showTypeDetails('${move.type.slug}')">${move.type.name}</button></span>`;
+                    case 'category':
+                        return `<span class="moves-col moves-col--category"><img class="moves-category-icon" src="${DAMAGE_CLASS_ICONS[move.damageClass.slug]}" alt="${move.damageClass.name}" title="${move.damageClass.name}"></span>`;
+                    case 'power':
+                        return `<span class="moves-col moves-col--power">${move.power ?? '—'}</span>`;
+                    case 'accuracy':
+                        return `<span class="moves-col moves-col--accuracy">${move.accuracy != null ? move.accuracy + '%' : '—'}</span>`;
+                    case 'how':
+                        return `<span class="moves-col moves-col--how">${row.how.map(how =>
+                            `<span class="moves-how" title="${methodDescription(how.methodId)}">${howLabel(how)}</span>`).join('')}</span>`;
+                }
+            };
+
+            list.innerHTML = `
+                <div class="${rowClass} moves-row--header">${columns.map(headerCell).join('')}</div>
+                ${rows.map(row => `<div class="${rowClass}">${columns.map(key => cell(key, row)).join('')}</div>`).join('')}`;
+        };
+
+        const renderMethodChips = () => {
+            const chips = [
+                { id: null, label: 'All', count: new Set(state.rows.map(row => row.move.slug)).size, description: '' },
+                ...state.methods.map(method => ({
+                    id: method.id,
+                    label: getCurrentLanguageName(method),
+                    count: state.rows.filter(row => row.methodId === method.id).length,
+                    description: methodDescription(method.id)
+                }))
+            ];
+            methodChips.innerHTML = chips.map(chip => `
+                <button class="moves-method${state.method === chip.id ? ' active' : ''}" data-method="${chip.id ?? ''}"
+                    title="${chip.description}">${chip.label}<span class="moves-method__count">${chip.count}</span></button>`).join('');
+        };
+
+        const showGame = async game => {
+            select.value = game.id;
+            const token = ++showToken;
+            list.innerHTML = '<div class="pokedex-panel__loading"><div class="spinner"></div></div>';
+
+            try {
+                const entries = learnset.filter(([, vgId]) => vgId === game.id);
+                const methodIds = [...new Set(entries.map(([, , methodId]) => methodId))].sort((a, b) => a - b);
+                const [methods, rows] = await Promise.all([
+                    Promise.all(methodIds.map(id => cachedFetch(API_MOVE_LEARN_METHOD + id, stripMoveLearnMethod))),
+                    Promise.all(entries.map(async ([moveIndex, , methodId, level]) => ({ move: await getMove(moveIndex), methodId, level })))
+                ]);
+                if (token !== showToken) return;
+
+                state.rows = rows;
+                state.methods = methods;
+                if (!methods.some(m => m.id === state.method)) {
+                    state.method = methods.find(m => m.name === 'level-up')?.id ?? null;
+                    state.sort = null;
+                }
+                renderMethodChips();
+                renderList();
+            } catch (error) {
+                if (token !== showToken) return;
+                if (DEBUG) console.error('Failed to load moves:', error);
+                methodChips.innerHTML = '';
+                list.innerHTML = '<p class="pokedex-panel__error">Failed to load moves.</p>';
+            }
+        };
+
+        methodChips.addEventListener('click', event => {
+            const chip = event.target.closest('.moves-method');
+            if (!chip) return;
+            state.method = chip.dataset.method ? parseInt(chip.dataset.method) : null;
+            state.sort = null;
+            renderMethodChips();
+            renderList();
+        });
+
+        list.addEventListener('click', event => {
+            const sortBtn = event.target.closest('.moves-sort');
+            if (!sortBtn) return;
+            const key = sortBtn.dataset.sort;
+            if (state.sort === key) {
+                state.dir = -state.dir;
+            } else {
+                state.sort = key;
+                state.dir = MOVE_COLUMNS[key].descFirst ? -1 : 1;
+            }
+            renderList();
+        });
+
+        select.addEventListener('change', () => {
+            const game = games.find(g => g.id === parseInt(select.value));
+            if (!game) return;
+            const preference = getPreferredVersion();
+            const preferenceInGame = game.versions.some(v => v.name === preference?.name);
+            if (!preferenceInGame) {
+                storePreferredVersion(game.versions[0].name, game.versions[0].id);
+            }
+            showGame(game);
+        });
+
+        panel.dataset.loaded = 'true';
+        await showGame(chooseMovesGame(games));
+    } catch (error) {
+        if (DEBUG) console.error('Failed to load moves:', error);
+        panel.innerHTML = '<p class="pokedex-panel__error">Failed to load moves.</p>';
+    }
 }
 
 function updateBreadcrumbPreview(currentName, nextName, isRevealed) {
@@ -2417,6 +2728,11 @@ window.addEventListener('keydown', function (event) {
         if (pokemonLightbox?.classList.contains('visible')) {
             closePokemonImage(); return;
         }
+        // Can be stacked on top of the move modal
+        const typeModal = document.getElementById('typeModal');
+        if (typeModal && typeModal.style.display === 'block') {
+            typeModal.style.display = 'none'; return;
+        }
         const moveInfoModal = document.getElementById('moveInfoModal');
         if (moveInfoModal && moveInfoModal.style.display === 'block') {
             closeMoveInfoModal(); return;
@@ -2424,16 +2740,29 @@ window.addEventListener('keydown', function (event) {
         if (teamBuilderOpen) {
             closeTeamBuilder(); return;
         }
-        const typeModal = document.getElementById('typeModal');
-        if (typeModal && typeModal.style.display === 'block') {
-            typeModal.style.display = 'none';
-        }
         const settingsModal = document.getElementById('settingsModal');
         if (settingsModal && settingsModal.style.display === 'block') {
             settingsModal.style.display = 'none';
         }
     }
 });
+
+async function showMoveInfo(moveName) {
+    const modal = document.getElementById('moveInfoModal');
+    const body = document.getElementById('moveInfoBody');
+    modal.style.display = 'block';
+    body.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const moveData = await cachedFetch(API_MOVE + moveName, stripMove);
+        await renderMoveResults(moveData, body);
+    } catch {
+        body.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;">Failed to load move.</p>';
+    }
+}
+
+function closeMoveInfoModal() {
+    document.getElementById('moveInfoModal').style.display = 'none';
+}
 
 async function renderMoveResults(moveData, targetEl = null, seq = undefined) {
     const moveName = getCurrentLanguageName(moveData);
@@ -2642,7 +2971,7 @@ const abilityTooltip = (() => {
     return { show, hide };
 })();
 
-const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badge--gens, .evo-variable';
+const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badge--gens, .evo-variable, .moves-col--name[data-tooltip]';
 (() => {
     let shownBadge = null;
     let lastPointerType = 'mouse';
@@ -2664,6 +2993,8 @@ const TOOLTIP_TARGETS = '.evo-cross-gen-badge, .setting-help, .chain-length-badg
     document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; }, true);
     document.addEventListener('click', (e) => {
         const badge = badgeFrom(e);
+        const opensMoveModal = badge?.classList.contains('moves-col--name');
+        if (opensMoveModal) { hide(); return; }
         if (badge?.classList.contains('setting-help')) e.preventDefault();
         if (badge && lastPointerType !== 'mouse') {
             shownBadge === badge ? hide() : show(badge);
