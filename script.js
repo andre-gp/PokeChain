@@ -29,7 +29,7 @@ const API_VERSION = 'https://pokeapi.co/api/v2/version/';
 // Local caching layer to reduce API requests, optimized to store only necessary fields
 const PokeCache = {
     basePrefix: 'pokeapi_cache_',
-    version: 'v3.3',
+    version: 'v3.4',
     timeToStale: 24 * 60 * 60 * 1000, // 24 hours
 
     get prefix() {
@@ -210,7 +210,7 @@ const stripPokemonList = (data) => data.results
 
 const stripMoveList = (data) => data.results.map(r => r.name);
 
-const stripSpeciesFlavorTextEntries = (entries) => (Array.isArray(entries) ? entries : [])
+const stripFlavorTextEntries = (entries) => (Array.isArray(entries) ? entries : [])
     .filter(entry => entry?.language?.name === CURRENT_LANGUAGE)
     .map(entry => ({
         flavor_text: entry.flavor_text,
@@ -220,7 +220,7 @@ const stripSpeciesFlavorTextEntries = (entries) => (Array.isArray(entries) ? ent
 const stripSpecies = (data) => ({
     evolution_chain: data.evolution_chain,
     evolves_from_species: data.evolves_from_species,
-    flavor_text_entries: stripSpeciesFlavorTextEntries(data.flavor_text_entries),
+    flavor_text_entries: stripFlavorTextEntries(data.flavor_text_entries),
     generation: data.generation,
     id: data.id,
     name: data.name,
@@ -243,6 +243,7 @@ const stripPokemon = (data) => ({
 });
 
 const stripForm = (data) => ({
+    flavor_text_entries: stripFlavorTextEntries(data.flavor_text_entries),
     form_name: data.form_name,
     form_names: data.form_names,
     id: data.id,
@@ -1057,6 +1058,10 @@ async function renderVarietyCards(variety, speciesData, evoChainData, isVisible,
 
     return Promise.all(cardForms.map(async formName => {
         const form = formName ? await cachedFetch(API_FORMS + formName, stripForm) : null;
+        const displayedForm = form ?? await cachedFetch(API_FORMS + pkmnData.forms[0].name, stripForm);
+        const flavorTextEntries = displayedForm.flavor_text_entries.length > 0
+            ? displayedForm.flavor_text_entries
+            : speciesData.flavor_text_entries;
         const typeSlots = form?.types?.length ? form.types : pkmnData.types;
         const pTypesPromise = Promise.all(
             typeSlots.map(async slot => ({
@@ -1067,7 +1072,7 @@ async function renderVarietyCards(variety, speciesData, evoChainData, isVisible,
         const myEvosPromise = findMyEvos(evoChainData.chain, speciesData, pkmnData, splitForms.length > 0 ? formName : null);
         const [pTypes, myEvos] = await Promise.all([pTypesPromise, myEvosPromise]);
 
-        return renderMainCard(formName ?? pkmnData.name, pkmnData.id, form?.sprite ?? pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, speciesData.flavor_text_entries);
+        return renderMainCard(formName ?? pkmnData.name, pkmnData.id, form?.sprite ?? pkmnData.sprite, pTypes, myEvos, isVisible, pkmnData.stats, pkmnData.abilities, pkmnData.height, pkmnData.weight, chainStages, speciesData.generation, flavorTextEntries);
     }));
 }
 
