@@ -1295,12 +1295,12 @@ async function renderMainCard(pName, pId, pSprite, pTypes, evoInfo, isVisible, s
                             </div>
                         </div>
                     </div>
-                    <div class="divider"></div>
                     <div class="details-panel" id="${panelId}"
                         data-pkmn-details="${encodedDetails}"></div>
                     ${hasPokedexEntries ? `
                     <div class="pokedex-panel" id="${pokedexPanelId}" role="region"
                         aria-label="Pokédex entries" data-pokedex-entries="${encodedPokedexEntries}"></div>` : ''}
+                    <div class="divider"></div>
                     <div class="evolution-section">
                         ${await renderEvolutions(evoInfo, pName, generation)}
                     </div>
@@ -1361,7 +1361,7 @@ async function findMyEvos(chainNode, speciesData, pokemonData, formName = null) 
 
 async function renderEvolutions(evoInfo, pName, currentGeneration = null) {
     if (!evoInfo || evoInfo.length === 0) {
-        return '<div class="no-evolution">✨ This Pokémon does not evolve.</div>';
+        return '<div class="no-evolution">This Pokémon does not evolve.</div>';
     }
 
     // Split each evolves_to species node into one render target per evolved_form.
@@ -1638,13 +1638,13 @@ async function loadDetailsPanel(panel) {
     }).join('');
 
     panel.innerHTML = `
-        <div class="details-panel__stats">
-            <div class="details-panel__section-title">Base Stats</div>
-            ${barsHtml}
-        </div>
         <div class="details-panel__abilities">
             <div class="details-panel__section-title">Abilities</div>
             <ul class="ability-list">${abilitiesHtml}</ul>
+        </div>
+        <div class="details-panel__stats">
+            <div class="details-panel__section-title">Base Stats</div>
+            <div class="stat-grid">${barsHtml}</div>
         </div>`;
 
     panel.querySelectorAll('.ability-item[data-tooltip]').forEach(el => {

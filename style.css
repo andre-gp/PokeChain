@@ -1814,9 +1814,9 @@ button.type-relation-badge:active {
 
 .details-panel {
     display: none;
-    margin-top: 16px;
-    margin-bottom: 24px;
-    padding: 20px;
+    margin-top: 12px;
+    margin-bottom: 20px;
+    padding: 12px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 12px;
@@ -1828,28 +1828,27 @@ button.type-relation-badge:active {
 }
 
 .details-panel__section-title {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--text-secondary);
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
-.details-panel__stats {
-    margin-bottom: 20px;
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(3, auto);
+    gap: 6px 24px;
 }
 
 .stat-row {
     display: grid;
-    grid-template-columns: 68px 36px 1fr;
+    grid-template-columns: 52px 28px 1fr;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.stat-row:last-child {
-    margin-bottom: 0;
+    gap: 6px;
 }
 
 .stat-row__label {
@@ -1885,8 +1884,17 @@ button.type-relation-badge:active {
 .stat-bar--low  { background: var(--danger); }
 
 .details-panel__abilities {
-    border-top: 1px solid var(--border-color);
-    padding-top: 16px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.details-panel__abilities .details-panel__section-title {
+    margin-bottom: 0;
 }
 
 .pokedex-panel {
@@ -2025,24 +2033,24 @@ button.type-relation-badge:active {
     list-style: none;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     padding: 0;
     margin: 0;
 }
 
 .ability-item {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 500;
     text-transform: capitalize;
     color: var(--text-primary);
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    padding: 4px 10px;
+    padding: 2px 8px;
 }
 
 .ability-hidden-tag {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 400;
     color: var(--text-secondary);
     font-style: italic;
@@ -2094,9 +2102,11 @@ button.type-relation-badge:active {
 }
 
 @media (max-width: 520px) {
-    .stat-row {
-        grid-template-columns: 58px 32px 1fr;
-        gap: 6px;
+    .stat-grid {
+        grid-template-columns: 1fr;
+        grid-auto-flow: row;
+        grid-template-rows: none;
+        gap: 5px;
     }
 
     .pokedex-panel {
