@@ -1526,9 +1526,15 @@ button.type-relation-badge:active {
 
 .move-meta {
     display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+.move-gen {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    white-space: nowrap;
 }
 
 .move-header-right {
