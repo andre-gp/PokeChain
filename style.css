@@ -1526,15 +1526,16 @@ button.type-relation-badge:active {
 
 .move-meta {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    align-items: flex-start;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 .move-gen {
+    margin: 20px 0 0;
     color: var(--text-secondary);
     font-size: 0.8rem;
-    white-space: nowrap;
+    text-align: left;
 }
 
 .move-header-right {

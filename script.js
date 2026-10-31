@@ -2847,7 +2847,6 @@ async function renderMoveResults(moveData, targetEl = null, seq = undefined) {
                     <div class="move-name">${moveName}</div>
                     <div class="move-meta">
                         <button class="type-badge" style="background:${TYPE_COLORS[typeSlug] || '#888'}" onclick="showTypeDetails('${typeSlug}')">${typeName}</button>
-                        ${moveData.generation ? `<span class="move-gen" title="Introduced in Generation ${formatGenLabel(moveData.generation)}">Gen ${formatGenLabel(moveData.generation)}</span>` : ''}
                     </div>
                 </div>
                 <div class="move-header-right">
@@ -2887,6 +2886,7 @@ async function renderMoveResults(moveData, targetEl = null, seq = undefined) {
                 <div class="move-effect">${effectHtml}</div>
             </div>
             ${detailsSectionHtml}
+            ${moveData.generation ? `<p class="move-gen">Introduced in Gen ${formatGenLabel(moveData.generation)}</p>` : ''}
         </div>
     `;
 
